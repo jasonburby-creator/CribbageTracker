@@ -50,7 +50,7 @@ export default function NewTripForm() {
       .single();
     if (fetched) return fetched.id;
 
-    throw insertError ?? new Error(`Couldn't resolve player "${trimmed}"`);
+    throw new Error(insertError?.message ?? `Couldn't resolve player "${trimmed}"`);
   }
 
   async function handleSubmit(e: React.FormEvent) {
