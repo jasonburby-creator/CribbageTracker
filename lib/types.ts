@@ -10,6 +10,7 @@ export type Trip = {
   board_name: string;
   board_theme: string | null;
   base_amount_cents: number;
+  per_point_cents: number;
   player1_id: string;
   player2_id: string;
   status: "active" | "archived";

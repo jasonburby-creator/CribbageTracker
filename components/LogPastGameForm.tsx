@@ -40,7 +40,7 @@ export default function LogPastGameForm({
 
   const preview =
     validScores && trip
-      ? computeGameResult(s1, s2, trip.base_amount_cents, isTieFlip)
+      ? computeGameResult(s1, s2, trip.base_amount_cents, isTieFlip, trip.per_point_cents)
       : null;
 
   function handleSubmit() {

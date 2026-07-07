@@ -74,7 +74,8 @@ export default function TripPage() {
       payload.player1Score,
       payload.player2Score,
       trip.base_amount_cents,
-      payload.isTieFlip
+      payload.isTieFlip,
+      trip.per_point_cents
     );
     const { data } = await supabase
       .from("games")
@@ -134,7 +135,7 @@ export default function TripPage() {
           {trip.board_theme ? ` — ${trip.board_theme}` : ""}
         </p>
         <p className="text-xs text-track/50 mt-1">
-          Base stake {formatCents(trip.base_amount_cents)} · 10¢/point differential
+          Base stake {formatCents(trip.base_amount_cents)} · {trip.per_point_cents}¢/point differential
         </p>
       </header>
 

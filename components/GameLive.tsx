@@ -75,7 +75,13 @@ export default function GameLive({
       return;
     }
 
-    const result = computeGameResult(p1, p2, trip.base_amount_cents, game.is_tie_flip);
+    const result = computeGameResult(
+      p1,
+      p2,
+      trip.base_amount_cents,
+      game.is_tie_flip,
+      trip.per_point_cents
+    );
     const { data } = await supabase
       .from("games")
       .update({

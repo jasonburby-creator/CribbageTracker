@@ -13,6 +13,7 @@ create table if not exists trips (
   board_name text not null,
   board_theme text,
   base_amount_cents integer not null default 100,
+  per_point_cents integer not null default 10,
   player1_id uuid not null references players(id),
   player2_id uuid not null references players(id),
   status text not null default 'active' check (status in ('active', 'archived')),
@@ -68,6 +69,7 @@ create policy "public update games" on games for update using (true);
 alter table games add column if not exists is_tie_flip boolean not null default false;
 alter table games add column if not exists location text;
 alter table games add column if not exists photo_url text;
+alter table trips add column if not exists per_point_cents integer not null default 10;
 
 -- Storage bucket for the one winner's-choice photo per game.
 insert into storage.buckets (id, name, public)
