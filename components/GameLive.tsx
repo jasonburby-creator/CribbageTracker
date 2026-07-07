@@ -240,6 +240,7 @@ export default function GameLive({
         player2Score={game.player2_score}
         player1Prev={p1Prev}
         player2Prev={p2Prev}
+        themeText={`${trip.board_name} ${trip.board_theme ?? ""}`}
       />
 
       {game.is_tie_flip && game.status === "in_progress" && (
