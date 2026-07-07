@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background-color: #2A1A16;
+  color: #EDE4D3;
+}
+
+@layer utilities {
+  .grain {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 3px 3px;
+  }
+}
+
+::selection {
+  background: #B08D57;
+  color: #2A1A16;
+}

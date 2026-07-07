@@ -1,0 +1,12 @@
+{
+  "name": "Skunk Line — Cribbage Trip Tracker",
+  "short_name": "Skunk Line",
+  "description": "Live cribbage scoring and trip winnings tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2A1A16",
+  "theme_color": "#3E2723",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
