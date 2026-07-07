@@ -74,6 +74,10 @@ function Lane({
                 const isRowEnd = r % 2 === 0 ? c === HOLES_PER_ROW - 1 : c === 0;
                 const rowHasContinuation = r < ROWS - 1;
 
+                if (i > WINNING_SCORE) {
+                  return <div key={c} className="flex-1" />;
+                }
+
                 return (
                   <div key={c} className="relative flex-1 flex items-center justify-center">
                     {isFinish ? (
