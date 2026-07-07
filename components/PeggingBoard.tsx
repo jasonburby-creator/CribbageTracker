@@ -69,9 +69,27 @@ function Lane({
                 const i = r % 2 === 0 ? r * HOLES_PER_ROW + c : r * HOLES_PER_ROW + (HOLES_PER_ROW - 1 - c);
                 const marker = SKUNK_MARKERS.find((m) => m.score === i);
                 const isMileMarker = i % 5 === 0;
+                const isStart = i === 0;
+                const isFinish = i === WINNING_SCORE;
+                const isRowEnd = r % 2 === 0 ? c === HOLES_PER_ROW - 1 : c === 0;
+                const rowHasContinuation = r < ROWS - 1;
+
                 return (
-                  <div key={c} className="flex-1 flex items-center justify-center">
-                    {marker ? (
+                  <div key={c} className="relative flex-1 flex items-center justify-center">
+                    {isFinish ? (
+                      <div
+                        className="rounded-full flex items-center justify-center"
+                        style={{
+                          width: "17px",
+                          height: "17px",
+                          background: `radial-gradient(circle at 35% 30%, #fff 0%, ${pegColor} 45%, rgba(0,0,0,0.6) 100%)`,
+                          boxShadow: `0 0 8px ${pegColor}, inset 0 1px 2px rgba(255,255,255,0.6)`,
+                          border: "1.5px solid rgba(237,228,211,0.7)",
+                        }}
+                      >
+                        <span style={{ fontSize: "9px", lineHeight: 1 }}>🏁</span>
+                      </div>
+                    ) : marker ? (
                       <div
                         className="rounded-full"
                         style={{
@@ -85,16 +103,40 @@ function Lane({
                       <div
                         className="rounded-full"
                         style={{
-                          width: isMileMarker ? "6px" : "4.5px",
-                          height: isMileMarker ? "6px" : "4.5px",
-                          background:
-                            "radial-gradient(circle at 35% 30%, rgba(20,10,8,0.9), rgba(0,0,0,0.95) 60%)",
-                          boxShadow: isMileMarker
+                          width: isStart ? "7px" : isMileMarker ? "6px" : "4.5px",
+                          height: isStart ? "7px" : isMileMarker ? "6px" : "4.5px",
+                          background: isStart
+                            ? "radial-gradient(circle at 35% 30%, rgba(237,228,211,0.9), rgba(176,141,87,0.6) 70%)"
+                            : "radial-gradient(circle at 35% 30%, rgba(20,10,8,0.9), rgba(0,0,0,0.95) 60%)",
+                          boxShadow: isStart
+                            ? "0 0 5px rgba(237,228,211,0.5)"
+                            : isMileMarker
                             ? "inset 0 1px 2px rgba(0,0,0,0.9), 0 0.5px 0 rgba(237,228,211,0.15)"
                             : "inset 0 1px 1px rgba(0,0,0,0.85)",
-                          border: isMileMarker ? "1px solid rgba(176,141,87,0.25)" : "none",
+                          border: isMileMarker && !isStart ? "1px solid rgba(176,141,87,0.25)" : "none",
                         }}
                       />
+                    )}
+
+                    {/* direction arrow at the end of each row, pointing toward the fold to the next row */}
+                    {isRowEnd && rowHasContinuation && !isFinish && (
+                      <span
+                        className="absolute text-[9px] leading-none pointer-events-none"
+                        style={{
+                          color: `${pegColor}99`,
+                          [r % 2 === 0 ? "right" : "left"]: "-7px",
+                        }}
+                      >
+                        {r % 2 === 0 ? "▸" : "◂"}
+                      </span>
+                    )}
+                    {isStart && (
+                      <span
+                        className="absolute text-[8px] uppercase tracking-wide leading-none pointer-events-none whitespace-nowrap"
+                        style={{ color: "rgba(237,228,211,0.5)", top: "-11px", left: "0" }}
+                      >
+                        start
+                      </span>
                     )}
                   </div>
                 );
@@ -209,20 +251,22 @@ export default function PeggingBoard({
         />
       </div>
 
-      <div className="flex items-center justify-center gap-4 mt-2 text-[10px] uppercase tracking-widest text-track/50">
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-2 text-[10px] uppercase tracking-widest text-track/50">
+        <span className="flex items-center gap-1">🏁 Finish ({WINNING_SCORE})</span>
+        <span className="flex items-center gap-1">▸ Path direction</span>
         <span className="flex items-center gap-1">
           <span
             className="inline-block w-2 h-2 rounded-full"
             style={{ backgroundColor: "#D4A72C", boxShadow: "0 0 4px #D4A72C" }}
           />
-          Skunk line ({SKUNK_THRESHOLD})
+          Skunk ({SKUNK_THRESHOLD})
         </span>
         <span className="flex items-center gap-1">
           <span
             className="inline-block w-2 h-2 rounded-full"
             style={{ backgroundColor: "#C1432A", boxShadow: "0 0 4px #C1432A" }}
           />
-          Double skunk ({DOUBLE_SKUNK_THRESHOLD})
+          Dbl skunk ({DOUBLE_SKUNK_THRESHOLD})
         </span>
       </div>
     </div>
