@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import TripSummary from "@/components/TripSummary";
@@ -10,10 +10,35 @@ import type { Game, Trip } from "@/lib/types";
 
 export default function ArchivedTripPage() {
   const params = useParams();
+  const router = useRouter();
   const tripId = params.id as string;
   const [trip, setTrip] = useState<Trip | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+
+  async function deleteTrip() {
+    if (
+      !confirm("Delete this trip and every game in it? This can't be undone.")
+    )
+      return;
+    setDeleting(true);
+    // Clean up game photos first — storage isn't covered by the DB cascade.
+    const photoPaths = games
+      .filter((g) => g.photo_url)
+      .map((g) => `${g.id}.jpg`);
+    if (photoPaths.length) {
+      await supabase.storage.from("game-photos").remove(photoPaths);
+    }
+    // Games are removed automatically via the trip_id FK's ON DELETE CASCADE.
+    const { error } = await supabase.from("trips").delete().eq("id", tripId);
+    if (error) {
+      alert(`Couldn't delete the trip: ${error.message}`);
+      setDeleting(false);
+      return;
+    }
+    router.push("/archive");
+  }
 
   useEffect(() => {
     async function load() {
@@ -107,6 +132,14 @@ export default function ArchivedTripPage() {
           </div>
         </div>
       )}
+
+      <button
+        onClick={deleteTrip}
+        disabled={deleting}
+        className="w-full mt-8 border border-skunk/50 text-skunk rounded-lg py-2.5 text-sm disabled:opacity-40"
+      >
+        {deleting ? "Deleting…" : "Delete trip"}
+      </button>
     </main>
   );
 }

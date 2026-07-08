@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import GameLive from "@/components/GameLive";
+import NewTripForm from "@/components/NewTripForm";
 import NewGameForm from "@/components/NewGameForm";
 import LogPastGameForm from "@/components/LogPastGameForm";
 import type { PastGamePayload, PhotoChange } from "@/components/LogPastGameForm";
@@ -22,8 +23,10 @@ export default function TripPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [ending, setEnding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [showNewGameForm, setShowNewGameForm] = useState(false);
   const [showLogPastGame, setShowLogPastGame] = useState(false);
+  const [showEditTrip, setShowEditTrip] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
 
   async function loadAll() {
@@ -165,6 +168,31 @@ export default function TripPage() {
     router.push(`/archive/${tripId}`);
   }
 
+  async function deleteTrip() {
+    if (
+      !confirm(
+        "Delete this trip and every game in it? This can't be undone."
+      )
+    )
+      return;
+    setDeleting(true);
+    // Clean up game photos first — storage isn't covered by the DB cascade.
+    const photoPaths = games
+      .filter((g) => g.photo_url)
+      .map((g) => `${g.id}.jpg`);
+    if (photoPaths.length) {
+      await supabase.storage.from("game-photos").remove(photoPaths);
+    }
+    // Games are removed automatically via the trip_id FK's ON DELETE CASCADE.
+    const { error } = await supabase.from("trips").delete().eq("id", tripId);
+    if (error) {
+      alert(`Couldn't delete the trip: ${error.message}`);
+      setDeleting(false);
+      return;
+    }
+    router.push("/");
+  }
+
   if (loading || !trip) {
     return (
       <main className="max-w-md mx-auto px-5 py-10 text-center text-track/50">
@@ -187,6 +215,23 @@ export default function TripPage() {
 
       {activeGame ? (
         <GameLive trip={trip} game={activeGame} onGameChange={handleGameChange} />
+      ) : showEditTrip ? (
+        <div className="rounded-xl border border-brass/30 bg-walnut-light/10 p-5">
+          <h2 className="font-display text-xl mb-4">Edit trip</h2>
+          <NewTripForm
+            trip={trip}
+            onSaved={(updated) => {
+              setTrip(updated);
+              setShowEditTrip(false);
+            }}
+          />
+          <button
+            onClick={() => setShowEditTrip(false)}
+            className="w-full text-center text-sm text-track/50 mt-3"
+          >
+            Cancel
+          </button>
+        </div>
       ) : showNewGameForm ? (
         <NewGameForm onStart={startNewGame} onCancel={() => setShowNewGameForm(false)} />
       ) : showLogPastGame ? (
@@ -291,14 +336,37 @@ export default function TripPage() {
         </div>
       )}
 
-      {!activeGame && (
-        <button
-          onClick={endTrip}
-          disabled={ending}
-          className="w-full mt-8 border border-skunk/50 text-skunk rounded-lg py-2.5 text-sm disabled:opacity-40"
-        >
-          {ending ? "Ending trip…" : "End trip & archive"}
-        </button>
+      {!activeGame && !showEditTrip && (
+        <div className="mt-8 space-y-2">
+          <button
+            onClick={endTrip}
+            disabled={ending || deleting}
+            className="w-full border border-skunk/50 text-skunk rounded-lg py-2.5 text-sm disabled:opacity-40"
+          >
+            {ending ? "Ending trip…" : "End trip & archive"}
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setShowNewGameForm(false);
+                setShowLogPastGame(false);
+                setEditingGame(null);
+                setShowEditTrip(true);
+              }}
+              disabled={ending || deleting}
+              className="flex-1 border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm disabled:opacity-40"
+            >
+              Edit trip details
+            </button>
+            <button
+              onClick={deleteTrip}
+              disabled={ending || deleting}
+              className="flex-1 border border-skunk/50 text-skunk rounded-lg py-2.5 text-sm disabled:opacity-40"
+            >
+              {deleting ? "Deleting…" : "Delete trip"}
+            </button>
+          </div>
+        </div>
       )}
     </main>
   );

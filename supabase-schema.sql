@@ -89,6 +89,8 @@ drop policy if exists "public write trips" on trips;
 create policy "public write trips" on trips for insert with check (true);
 drop policy if exists "public update trips" on trips;
 create policy "public update trips" on trips for update using (true);
+drop policy if exists "public delete trips" on trips;
+create policy "public delete trips" on trips for delete using (true);
 
 drop policy if exists "public read games" on games;
 create policy "public read games" on games for select using (true);
@@ -96,6 +98,8 @@ drop policy if exists "public write games" on games;
 create policy "public write games" on games for insert with check (true);
 drop policy if exists "public update games" on games;
 create policy "public update games" on games for update using (true);
+drop policy if exists "public delete games" on games;
+create policy "public delete games" on games for delete using (true);
 
 -- Storage bucket for the one winner's-choice photo per game.
 insert into storage.buckets (id, name, public)

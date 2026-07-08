@@ -3,18 +3,32 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { Player } from "@/lib/types";
+import type { Player, Trip } from "@/lib/types";
 
-export default function NewTripForm() {
+// Doubles as the "new trip" and "edit trip" form. Pass an existing `trip` to
+// pre-fill the fields and switch into edit mode; `onSaved` fires with the
+// updated trip so the caller can refresh and close the form.
+export default function NewTripForm({
+  trip,
+  onSaved,
+}: {
+  trip?: Trip;
+  onSaved?: (trip: Trip) => void;
+} = {}) {
+  const isEditing = !!trip;
   const router = useRouter();
   const [players, setPlayers] = useState<Player[]>([]);
-  const [name, setName] = useState("");
-  const [boardName, setBoardName] = useState("");
-  const [boardTheme, setBoardTheme] = useState("");
-  const [baseAmount, setBaseAmount] = useState("1.00");
-  const [perPoint, setPerPoint] = useState("10");
-  const [player1Name, setPlayer1Name] = useState("");
-  const [player2Name, setPlayer2Name] = useState("");
+  const [name, setName] = useState(trip?.name ?? "");
+  const [boardName, setBoardName] = useState(trip?.board_name ?? "");
+  const [boardTheme, setBoardTheme] = useState(trip?.board_theme ?? "");
+  const [baseAmount, setBaseAmount] = useState(
+    trip ? (trip.base_amount_cents / 100).toFixed(2) : "1.00"
+  );
+  const [perPoint, setPerPoint] = useState(
+    trip ? String(trip.per_point_cents) : "10"
+  );
+  const [player1Name, setPlayer1Name] = useState(trip?.player1?.name ?? "");
+  const [player2Name, setPlayer2Name] = useState(trip?.player2?.name ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,18 +97,35 @@ export default function NewTripForm() {
         resolvePlayer(player2Name),
       ]);
 
+      const values = {
+        name: name.trim(),
+        board_name: boardName.trim(),
+        board_theme: boardTheme.trim() || null,
+        base_amount_cents: baseCents,
+        per_point_cents: perPointCents,
+        player1_id: player1Id,
+        player2_id: player2Id,
+      };
+
+      if (isEditing) {
+        const { data, error: updateError } = await supabase
+          .from("trips")
+          .update(values)
+          .eq("id", trip.id)
+          .select("*, player1:player1_id(*), player2:player2_id(*)")
+          .single();
+        if (updateError || !data) {
+          setError(updateError?.message ?? "Something went wrong.");
+          setSubmitting(false);
+          return;
+        }
+        onSaved?.(data as unknown as Trip);
+        return;
+      }
+
       const { data, error: insertError } = await supabase
         .from("trips")
-        .insert({
-          name: name.trim(),
-          board_name: boardName.trim(),
-          board_theme: boardTheme.trim() || null,
-          base_amount_cents: baseCents,
-          per_point_cents: perPointCents,
-          player1_id: player1Id,
-          player2_id: player2Id,
-          status: "active",
-        })
+        .insert({ ...values, status: "active" })
         .select()
         .single();
 
@@ -217,7 +248,13 @@ export default function NewTripForm() {
         disabled={submitting}
         className="w-full bg-brass text-walnut-deep font-display font-semibold text-lg py-3 rounded-lg hover:bg-brass-light transition-colors disabled:opacity-50"
       >
-        {submitting ? "Starting trip…" : "Start the trip"}
+        {isEditing
+          ? submitting
+            ? "Saving…"
+            : "Save changes"
+          : submitting
+          ? "Starting trip…"
+          : "Start the trip"}
       </button>
     </form>
   );
