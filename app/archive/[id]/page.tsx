@@ -51,11 +51,7 @@ export default function ArchivedTripPage() {
       </Link>
       <header className="text-center mt-2 mb-6">
         <h1 className="font-display italic text-3xl text-track">{trip.name}</h1>
-        <p className="text-xs text-brass-light/60 mt-1">
-          {trip.board_name}
-          {trip.board_theme ? ` — ${trip.board_theme}` : ""}
-        </p>
-        <p className="text-xs text-track/50 mt-1">
+        <p className="text-xs text-track/50 mt-2">
           {new Date(trip.created_at).toLocaleDateString()} –{" "}
           {trip.ended_at ? new Date(trip.ended_at).toLocaleDateString() : ""}
         </p>

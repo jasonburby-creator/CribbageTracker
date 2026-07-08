@@ -7,8 +7,10 @@ import { supabase } from "@/lib/supabase";
 import GameLive from "@/components/GameLive";
 import NewGameForm from "@/components/NewGameForm";
 import LogPastGameForm from "@/components/LogPastGameForm";
+import type { PastGamePayload, PhotoChange } from "@/components/LogPastGameForm";
 import TripSummary from "@/components/TripSummary";
 import { formatCents, computeGameResult } from "@/lib/scoring";
+import { uploadGamePhoto } from "@/lib/photo";
 import type { Game, Trip } from "@/lib/types";
 
 export default function TripPage() {
@@ -22,6 +24,7 @@ export default function TripPage() {
   const [ending, setEnding] = useState(false);
   const [showNewGameForm, setShowNewGameForm] = useState(false);
   const [showLogPastGame, setShowLogPastGame] = useState(false);
+  const [editingGame, setEditingGame] = useState<Game | null>(null);
 
   async function loadAll() {
     const { data: tripData } = await supabase
@@ -62,13 +65,14 @@ export default function TripPage() {
     setShowNewGameForm(false);
   }
 
-  async function logPastGame(payload: {
-    player1Score: number;
-    player2Score: number;
-    isTieFlip: boolean;
-    location: string;
-    playedAt: string;
-  }) {
+  function closePastGameForm() {
+    setShowLogPastGame(false);
+    setEditingGame(null);
+  }
+
+  // Handles both logging a brand-new past game and editing an existing one,
+  // plus adding/replacing/removing its photo.
+  async function submitPastGame(payload: PastGamePayload, photo: PhotoChange) {
     if (!trip) return;
     const result = computeGameResult(
       payload.player1Score,
@@ -77,28 +81,74 @@ export default function TripPage() {
       payload.isTieFlip,
       trip.per_point_cents
     );
-    const { data } = await supabase
-      .from("games")
-      .insert({
-        trip_id: tripId,
-        player1_score: payload.player1Score,
-        player2_score: payload.player2Score,
-        status: "completed",
-        winner_player: result.winnerPlayer,
-        is_skunk: result.isSkunk,
-        is_double_skunk: result.isDoubleSkunk,
-        is_tie_flip: payload.isTieFlip,
-        location: payload.location || null,
-        payout_cents: result.payoutCents,
-        win_weight: result.winWeight,
-        events: [],
-        created_at: payload.playedAt,
-        completed_at: payload.playedAt,
-      })
-      .select()
-      .single();
-    if (data) setGames((g) => [...g, data as Game]);
-    setShowLogPastGame(false);
+    // Fields common to insert and update. `events` is left untouched on edit
+    // so a live-pegged game keeps its point-by-point history.
+    const fields = {
+      player1_score: payload.player1Score,
+      player2_score: payload.player2Score,
+      status: "completed" as const,
+      winner_player: result.winnerPlayer,
+      is_skunk: result.isSkunk,
+      is_double_skunk: result.isDoubleSkunk,
+      is_tie_flip: payload.isTieFlip,
+      location: payload.location || null,
+      payout_cents: result.payoutCents,
+      win_weight: result.winWeight,
+      created_at: payload.playedAt,
+      completed_at: payload.playedAt,
+    };
+
+    let saved: Game;
+    if (editingGame) {
+      const { data, error } = await supabase
+        .from("games")
+        .update(fields)
+        .eq("id", editingGame.id)
+        .select()
+        .single();
+      if (error || !data) throw error ?? new Error("update failed");
+      saved = data as Game;
+    } else {
+      const { data, error } = await supabase
+        .from("games")
+        .insert({ trip_id: tripId, events: [], ...fields })
+        .select()
+        .single();
+      if (error || !data) throw error ?? new Error("insert failed");
+      saved = data as Game;
+    }
+
+    // Resolve the photo after the row exists (upload keys off the game id).
+    let photoUrl = saved.photo_url;
+    if (photo.remove) photoUrl = null;
+    if (photo.file) photoUrl = await uploadGamePhoto(saved.id, photo.file);
+    if (photoUrl !== saved.photo_url) {
+      const { data } = await supabase
+        .from("games")
+        .update({ photo_url: photoUrl })
+        .eq("id", saved.id)
+        .select()
+        .single();
+      if (data) saved = data as Game;
+    }
+
+    setGames((prev) => {
+      const next = prev.some((x) => x.id === saved.id)
+        ? prev.map((x) => (x.id === saved.id ? saved : x))
+        : [...prev, saved];
+      return next.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    });
+    closePastGameForm();
+  }
+
+  async function deletePastGame() {
+    if (!editingGame) return;
+    const id = editingGame.id;
+    const { error } = await supabase.from("games").delete().eq("id", id);
+    if (error) throw error;
+    supabase.storage.from("game-photos").remove([`${id}.jpg`]);
+    setGames((prev) => prev.filter((x) => x.id !== id));
+    closePastGameForm();
   }
 
   function handleGameChange(updated: Game) {
@@ -130,11 +180,7 @@ export default function TripPage() {
       </Link>
       <header className="text-center mt-2 mb-6">
         <h1 className="font-display italic text-3xl text-track">{trip.name}</h1>
-        <p className="text-xs text-brass-light/60 mt-1">
-          {trip.board_name}
-          {trip.board_theme ? ` — ${trip.board_theme}` : ""}
-        </p>
-        <p className="text-xs text-track/50 mt-1">
+        <p className="text-xs text-track/50 mt-2">
           Base stake {formatCents(trip.base_amount_cents)} · {trip.per_point_cents}¢/point differential
         </p>
       </header>
@@ -146,8 +192,8 @@ export default function TripPage() {
       ) : showLogPastGame ? (
         <LogPastGameForm
           trip={trip}
-          onSave={logPastGame}
-          onCancel={() => setShowLogPastGame(false)}
+          onSubmit={submitPastGame}
+          onCancel={closePastGameForm}
         />
       ) : (
         <div className="space-y-2">
@@ -158,7 +204,10 @@ export default function TripPage() {
             Deal a new game
           </button>
           <button
-            onClick={() => setShowLogPastGame(true)}
+            onClick={() => {
+              setEditingGame(null);
+              setShowLogPastGame(true);
+            }}
             className="w-full border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm"
           >
             Log a game already played
@@ -176,45 +225,68 @@ export default function TripPage() {
             Game log
           </p>
           <div className="space-y-1.5">
-            {[...completedGames].reverse().map((g) => (
-              <div
-                key={g.id}
-                className="text-sm text-track/70 border-b border-brass/10 pb-1.5"
-              >
-                <div className="flex justify-between items-start gap-3">
-                  <div className="flex-1">
-                    <span>
-                      {g.winner_player === 1 ? trip.player1?.name : trip.player2?.name} won{" "}
-                      {Math.max(g.player1_score, g.player2_score)}–
-                      {Math.min(g.player1_score, g.player2_score)}
-                      {g.is_double_skunk ? " (double skunk)" : g.is_skunk ? " (skunk)" : ""}
-                      {g.is_tie_flip ? " ×2" : ""}
-                    </span>
-                    <p className="text-xs text-track/40">
-                      {g.completed_at
-                        ? new Date(g.completed_at).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })
-                        : ""}
-                      {g.location ? ` · ${g.location}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    {g.photo_url && (
-                      <img
-                        src={g.photo_url}
-                        alt=""
-                        className="w-10 h-10 rounded-md object-cover border border-brass/30"
-                      />
-                    )}
-                    <span className="font-score">{formatCents(g.payout_cents ?? 0)}</span>
+            {[...completedGames].reverse().map((g) =>
+              editingGame?.id === g.id ? (
+                <LogPastGameForm
+                  key={g.id}
+                  trip={trip}
+                  game={g}
+                  onSubmit={submitPastGame}
+                  onDelete={deletePastGame}
+                  onCancel={closePastGameForm}
+                />
+              ) : (
+                <div
+                  key={g.id}
+                  className="text-sm text-track/70 border-b border-brass/10 pb-1.5"
+                >
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1">
+                      <span>
+                        {g.winner_player === 1 ? trip.player1?.name : trip.player2?.name} won{" "}
+                        {Math.max(g.player1_score, g.player2_score)}–
+                        {Math.min(g.player1_score, g.player2_score)}
+                        {g.is_double_skunk ? " (double skunk)" : g.is_skunk ? " (skunk)" : ""}
+                        {g.is_tie_flip ? " ×2" : ""}
+                      </span>
+                      <p className="text-xs text-track/40">
+                        {g.completed_at
+                          ? new Date(g.completed_at).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })
+                          : ""}
+                        {g.location ? ` · ${g.location}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {g.photo_url && (
+                        <img
+                          src={g.photo_url}
+                          alt=""
+                          className="w-10 h-10 rounded-md object-cover border border-brass/30"
+                        />
+                      )}
+                      <div className="text-right">
+                        <span className="font-score block">{formatCents(g.payout_cents ?? 0)}</span>
+                        <button
+                          onClick={() => {
+                            setShowLogPastGame(false);
+                            setShowNewGameForm(false);
+                            setEditingGame(g);
+                          }}
+                          className="text-xs text-brass-light/70 underline underline-offset-2"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
         </div>
       )}

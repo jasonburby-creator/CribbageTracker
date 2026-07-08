@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PeggingBoard from "@/components/PeggingBoard";
 import { computeGameResult, WINNING_SCORE } from "@/lib/scoring";
+import { uploadGamePhoto } from "@/lib/photo";
 import type { Game, ScoreEvent, Trip } from "@/lib/types";
 
 const QUICK_POINTS = [1, 2, 3, 4, 6, 8, 12, 15, 24];
@@ -131,87 +132,12 @@ export default function GameLive({
     setBusy(false);
   }
 
-  const MAX_PHOTO_BYTES = 1_000_000; // 1MB
-
-  function loadImage(file: File): Promise<HTMLImageElement> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve(img);
-      };
-      img.onerror = reject;
-      img.src = url;
-    });
-  }
-
-  function drawAtSize(img: HTMLImageElement, maxDim: number): HTMLCanvasElement {
-    let { width, height } = img;
-    if (width > maxDim || height > maxDim) {
-      if (width > height) {
-        height = Math.round((height * maxDim) / width);
-        width = maxDim;
-      } else {
-        width = Math.round((width * maxDim) / height);
-        height = maxDim;
-      }
-    }
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("no canvas context");
-    ctx.drawImage(img, 0, 0, width, height);
-    return canvas;
-  }
-
-  function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("compression failed"))),
-        "image/jpeg",
-        quality
-      );
-    });
-  }
-
-  // Compresses to under MAX_PHOTO_BYTES: first steps quality down at a fixed
-  // size, then shrinks dimensions further and repeats, until under budget
-  // or we hit a sane floor.
-  async function compressImage(file: File): Promise<Blob> {
-    const img = await loadImage(file);
-    const dims = [1600, 1200, 1000, 800, 600, 400];
-    let lastBlob: Blob | null = null;
-    for (const maxDim of dims) {
-      const canvas = drawAtSize(img, maxDim);
-      for (const quality of [0.8, 0.65, 0.5, 0.35, 0.2]) {
-        const blob = await canvasToBlob(canvas, quality);
-        lastBlob = blob;
-        if (blob.size <= MAX_PHOTO_BYTES) {
-          return blob;
-        }
-      }
-    }
-    // Fell through every step — return the smallest we managed.
-    return lastBlob as Blob;
-  }
-
   async function handlePhotoSelect(file: File | undefined) {
     if (!file) return;
     setPhotoError(null);
     setUploadingPhoto(true);
     try {
-      const compressed = await compressImage(file);
-      const path = `${game.id}.jpg`;
-      const { error: uploadError } = await supabase.storage
-        .from("game-photos")
-        .upload(path, compressed, { upsert: true, contentType: "image/jpeg" });
-      if (uploadError) throw uploadError;
-      const { data: publicUrlData } = supabase.storage
-        .from("game-photos")
-        .getPublicUrl(path);
-      const photoUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+      const photoUrl = await uploadGamePhoto(game.id, file);
       const { data } = await supabase
         .from("games")
         .update({ photo_url: photoUrl })
@@ -240,7 +166,8 @@ export default function GameLive({
         player2Score={game.player2_score}
         player1Prev={p1Prev}
         player2Prev={p2Prev}
-        themeText={`${trip.board_name} ${trip.board_theme ?? ""}`}
+        themeText={`${trip.name} ${trip.board_name} ${trip.board_theme ?? ""}`}
+        boardName={trip.board_name}
       />
 
       {game.is_tie_flip && game.status === "in_progress" && (

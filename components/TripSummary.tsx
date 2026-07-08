@@ -18,8 +18,11 @@ export default function TripSummary({ trip, games }: { trip: Trip; games: Game[]
           <div key={row.name}>
             <p className="font-display text-lg text-track">{row.name}</p>
             <p className="text-sm text-track/70">
-              {row.s.wins} win{row.s.wins === 1 ? "" : "s"}
-              {row.s.winPoints !== row.s.wins ? ` (${row.s.winPoints} weighted)` : ""}
+              <span className="font-score text-track">{row.s.winPoints}</span> Point
+              {row.s.winPoints === 1 ? "" : "s"}
+              <span className="text-track/50">
+                {" "}({row.s.wins} game{row.s.wins === 1 ? "" : "s"})
+              </span>
             </p>
             {(row.s.skunks > 0 || row.s.doubleSkunks > 0) && (
               <p className="text-xs text-skunk">
