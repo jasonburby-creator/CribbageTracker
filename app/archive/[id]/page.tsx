@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import TripSummary from "@/components/TripSummary";
-import { formatCents } from "@/lib/scoring";
+import PhotoThumb from "@/components/PhotoThumb";
+import PullToRefresh from "@/components/PullToRefresh";
+import { formatCents, sortGamesByPlayedDesc } from "@/lib/scoring";
 import type { Game, Trip } from "@/lib/types";
 
 export default function ArchivedTripPage() {
@@ -40,26 +42,27 @@ export default function ArchivedTripPage() {
     router.push("/archive");
   }
 
-  useEffect(() => {
-    async function load() {
-      const { data: tripData } = await supabase
-        .from("trips")
-        .select("*, player1:player1_id(*), player2:player2_id(*)")
-        .eq("id", tripId)
-        .single();
-      setTrip(tripData as unknown as Trip);
+  const load = useCallback(async () => {
+    const { data: tripData } = await supabase
+      .from("trips")
+      .select("*, player1:player1_id(*), player2:player2_id(*)")
+      .eq("id", tripId)
+      .single();
+    setTrip(tripData as unknown as Trip);
 
-      const { data: gamesData } = await supabase
-        .from("games")
-        .select("*")
-        .eq("trip_id", tripId)
-        .eq("status", "completed")
-        .order("created_at", { ascending: true });
-      setGames((gamesData as Game[]) ?? []);
-      setLoading(false);
-    }
-    load();
+    const { data: gamesData } = await supabase
+      .from("games")
+      .select("*")
+      .eq("trip_id", tripId)
+      .eq("status", "completed")
+      .order("created_at", { ascending: true });
+    setGames((gamesData as Game[]) ?? []);
+    setLoading(false);
   }, [tripId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading || !trip) {
     return (
@@ -70,6 +73,7 @@ export default function ArchivedTripPage() {
   }
 
   return (
+    <PullToRefresh onRefresh={load}>
     <main className="max-w-md mx-auto px-5 py-8">
       <Link href="/archive" className="text-sm text-brass-light/60">
         ← Past trips
@@ -90,7 +94,7 @@ export default function ArchivedTripPage() {
             Game log
           </p>
           <div className="space-y-1.5">
-            {games.map((g) => (
+            {sortGamesByPlayedDesc(games).map((g) => (
               <div
                 key={g.id}
                 className="text-sm text-track/70 border-b border-brass/10 pb-1.5"
@@ -118,9 +122,8 @@ export default function ArchivedTripPage() {
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     {g.photo_url && (
-                      <img
+                      <PhotoThumb
                         src={g.photo_url}
-                        alt=""
                         className="w-10 h-10 rounded-md object-cover border border-brass/30"
                       />
                     )}
@@ -141,5 +144,6 @@ export default function ArchivedTripPage() {
         {deleting ? "Deleting…" : "Delete trip"}
       </button>
     </main>
+    </PullToRefresh>
   );
 }

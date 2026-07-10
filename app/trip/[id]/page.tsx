@@ -10,7 +10,9 @@ import NewGameForm from "@/components/NewGameForm";
 import LogPastGameForm from "@/components/LogPastGameForm";
 import type { PastGamePayload, PhotoChange } from "@/components/LogPastGameForm";
 import TripSummary from "@/components/TripSummary";
-import { formatCents, computeGameResult } from "@/lib/scoring";
+import PhotoThumb from "@/components/PhotoThumb";
+import PullToRefresh from "@/components/PullToRefresh";
+import { formatCents, computeGameResult, sortGamesByPlayedDesc } from "@/lib/scoring";
 import { uploadGamePhoto } from "@/lib/photo";
 import type { Game, Trip } from "@/lib/types";
 
@@ -139,7 +141,10 @@ export default function TripPage() {
       const next = prev.some((x) => x.id === saved.id)
         ? prev.map((x) => (x.id === saved.id ? saved : x))
         : [...prev, saved];
-      return next.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      // Keep chronological (oldest-first) in state; the log view sorts for display.
+      return next.sort((a, b) =>
+        (a.completed_at ?? a.created_at).localeCompare(b.completed_at ?? b.created_at)
+      );
     });
     closePastGameForm();
   }
@@ -202,6 +207,7 @@ export default function TripPage() {
   }
 
   return (
+    <PullToRefresh onRefresh={loadAll}>
     <main className="max-w-md mx-auto px-5 py-8">
       <Link href="/" className="text-sm text-brass-light/60">
         ← Trips
@@ -270,7 +276,7 @@ export default function TripPage() {
             Game log
           </p>
           <div className="space-y-1.5">
-            {[...completedGames].reverse().map((g) =>
+            {sortGamesByPlayedDesc(completedGames).map((g) =>
               editingGame?.id === g.id ? (
                 <LogPastGameForm
                   key={g.id}
@@ -308,9 +314,8 @@ export default function TripPage() {
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       {g.photo_url && (
-                        <img
+                        <PhotoThumb
                           src={g.photo_url}
-                          alt=""
                           className="w-10 h-10 rounded-md object-cover border border-brass/30"
                         />
                       )}
@@ -369,5 +374,6 @@ export default function TripPage() {
         </div>
       )}
     </main>
+    </PullToRefresh>
   );
 }

@@ -1,29 +1,56 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import NewTripForm from "@/components/NewTripForm";
+import HeadToHeadTally from "@/components/HeadToHeadTally";
+import PullToRefresh from "@/components/PullToRefresh";
+import { computeHeadToHeads } from "@/lib/scoring";
+import type { HeadToHead } from "@/lib/scoring";
 import type { Trip } from "@/lib/types";
 
 export default function HomePage() {
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [heads, setHeads] = useState<HeadToHead[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    supabase
-      .from("trips")
-      .select("*, player1:player1_id(*), player2:player2_id(*)")
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setTrips((data as unknown as Trip[]) ?? []);
-        setLoading(false);
-      });
+  const loadHome = useCallback(async () => {
+    // Active trips for the list, plus every trip + completed game for the
+    // all-time head-to-head tally.
+    const [activeRes, allTripsRes, gamesRes] = await Promise.all([
+      supabase
+        .from("trips")
+        .select("*, player1:player1_id(*), player2:player2_id(*)")
+        .eq("status", "active")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("trips")
+        .select("id, player1_id, player2_id, player1:player1_id(*), player2:player2_id(*)"),
+      supabase
+        .from("games")
+        .select(
+          "trip_id, status, winner_player, is_skunk, is_double_skunk, payout_cents, win_weight"
+        )
+        .eq("status", "completed"),
+    ]);
+    setTrips((activeRes.data as unknown as Trip[]) ?? []);
+    setHeads(
+      computeHeadToHeads(
+        (allTripsRes.data as any[]) ?? [],
+        (gamesRes.data as any[]) ?? []
+      )
+    );
+    setLoading(false);
   }, []);
 
+  useEffect(() => {
+    loadHome();
+  }, [loadHome]);
+
   return (
+    <PullToRefresh onRefresh={loadHome}>
     <main className="max-w-md mx-auto px-5 py-10">
       <header className="mb-8 text-center">
         <p className="uppercase tracking-[0.35em] text-brass-light/70 text-xs mb-2">
@@ -33,6 +60,8 @@ export default function HomePage() {
           Cribbage Trips
         </h1>
       </header>
+
+      {!loading && !showForm && <HeadToHeadTally heads={heads} />}
 
       {!loading && trips.length > 0 && !showForm && (
         <div className="space-y-3 mb-8">
@@ -90,5 +119,6 @@ export default function HomePage() {
         </Link>
       </div>
     </main>
+    </PullToRefresh>
   );
 }

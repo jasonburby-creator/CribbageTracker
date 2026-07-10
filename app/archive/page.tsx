@@ -1,27 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import PullToRefresh from "@/components/PullToRefresh";
 import type { Trip } from "@/lib/types";
 
 export default function ArchivePage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    supabase
+  const loadTrips = useCallback(async () => {
+    const { data } = await supabase
       .from("trips")
       .select("*, player1:player1_id(*), player2:player2_id(*)")
       .eq("status", "archived")
-      .order("ended_at", { ascending: false })
-      .then(({ data }) => {
-        setTrips((data as unknown as Trip[]) ?? []);
-        setLoading(false);
-      });
+      .order("ended_at", { ascending: false });
+    setTrips((data as unknown as Trip[]) ?? []);
+    setLoading(false);
   }, []);
 
+  useEffect(() => {
+    loadTrips();
+  }, [loadTrips]);
+
   return (
+    <PullToRefresh onRefresh={loadTrips}>
     <main className="max-w-md mx-auto px-5 py-10">
       <Link href="/" className="text-sm text-brass-light/60">
         ← Trips
@@ -54,5 +58,6 @@ export default function ArchivePage() {
         ))}
       </div>
     </main>
+    </PullToRefresh>
   );
 }
