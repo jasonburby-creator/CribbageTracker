@@ -2,20 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme palette (Skunk Line field palette). Colors are RGB triplets so
+ * Tailwind's `rgb(var(--x) / <alpha>)` tokens keep opacity modifiers working.
+ *
+ *   Safety Orange #F27A21   Trail Blue #197B8F   Field Gray #7A848B
+ *   Camp White #F4F4F1      Coal #2B2D2F         Lake Teal #61B0B1
+ *   Driftwood #D9C9AE
+ *
+ * :root is the LIGHT (day) theme; html.dark is the DARK (night) theme.
+ */
+:root {
+  --c-bg: 244 244 241;      /* Camp White */
+  --c-surface: 122 132 139; /* Field Gray (used at low alpha for cards) */
+  --c-text: 43 45 47;       /* Coal */
+  --c-accent: 242 122 33;   /* Safety Orange */
+  --c-muted: 96 105 112;    /* darker Field Gray — readable secondary text */
+  --c-danger: 178 60 34;    /* brick red */
+  --c-ink: 43 45 47;        /* dark text on the accent */
+  --c-grain: 43 45 47;      /* grain dots (dark on light) */
+}
+
+html.dark {
+  --c-bg: 43 45 47;         /* Coal */
+  --c-surface: 122 132 139; /* Field Gray */
+  --c-text: 244 244 241;    /* Camp White */
+  --c-accent: 242 122 33;   /* Safety Orange */
+  --c-muted: 170 180 185;   /* lightened Field Gray */
+  --c-danger: 214 90 62;    /* warm red */
+  --c-ink: 43 45 47;        /* dark text on the accent */
+  --c-grain: 255 255 255;   /* grain dots (light on dark) */
+}
+
 html,
 body {
-  background-color: #2A1A16;
-  color: #EDE4D3;
+  background-color: rgb(var(--c-bg));
+  color: rgb(var(--c-text));
 }
 
 @layer utilities {
   .grain {
-    background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-image: radial-gradient(
+      rgb(var(--c-grain) / 0.03) 1px,
+      transparent 1px
+    );
     background-size: 3px 3px;
   }
 }
 
 ::selection {
-  background: #B08D57;
-  color: #2A1A16;
+  background: rgb(var(--c-accent));
+  color: rgb(var(--c-ink));
 }

@@ -86,7 +86,7 @@ export default function NewGameForm({
             type="checkbox"
             checked={isTieFlip}
             onChange={(e) => setIsTieFlip(e.target.checked)}
-            className="mt-1 w-4 h-4 accent-[#B08D57]"
+            className="mt-1 w-4 h-4 accent-brass"
           />
           <span className="text-sm text-track">
             <span className="block">Cut for deal was a tie — double odds</span>
@@ -107,7 +107,7 @@ export default function NewGameForm({
         </button>
         <button
           onClick={() => onStart({ isTieFlip, location: location.trim() })}
-          className="flex-1 bg-brass text-walnut-deep font-display font-semibold rounded-lg py-2.5"
+          className="flex-1 bg-brass text-ink font-display font-semibold rounded-lg py-2.5"
         >
           Deal
         </button>

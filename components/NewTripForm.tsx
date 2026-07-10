@@ -246,7 +246,7 @@ export default function NewTripForm({
       <button
         type="submit"
         disabled={submitting}
-        className="w-full bg-brass text-walnut-deep font-display font-semibold text-lg py-3 rounded-lg hover:bg-brass-light transition-colors disabled:opacity-50"
+        className="w-full bg-brass text-ink font-display font-semibold text-lg py-3 rounded-lg hover:brightness-110 transition-[filter] disabled:opacity-50"
       >
         {isEditing
           ? submitting

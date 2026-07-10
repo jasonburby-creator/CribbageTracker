@@ -228,7 +228,7 @@ export default function GameLive({
                     key={pts}
                     disabled={busy}
                     onClick={() => addPoints(player, pts)}
-                    className="bg-walnut-light/30 hover:bg-brass hover:text-walnut-deep border border-brass/30 rounded-md py-2 text-sm font-score disabled:opacity-40"
+                    className="bg-walnut-light/30 hover:bg-brass hover:text-ink border border-brass/30 rounded-md py-2 text-sm font-score disabled:opacity-40"
                   >
                     +{pts}
                   </button>
@@ -253,7 +253,7 @@ export default function GameLive({
                       setCustomValue((v) => ({ ...v, [player]: "" }));
                     }
                   }}
-                  className="px-3 rounded-md bg-brass/80 text-walnut-deep text-sm font-medium disabled:opacity-40"
+                  className="px-3 rounded-md bg-brass/80 text-ink text-sm font-medium disabled:opacity-40"
                 >
                   Add
                 </button>

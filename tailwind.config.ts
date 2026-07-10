@@ -8,18 +8,25 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Semantic tokens backed by CSS variables so light/dark themes swap
+        // without editing any classNames. Variables are RGB triplets defined
+        // in globals.css; the `<alpha-value>` form keeps opacity modifiers
+        // (e.g. text-brass-light/70) working.
         walnut: {
-          DEFAULT: "#3E2723",
-          light: "#5D4037",
-          deep: "#2A1A16",
+          DEFAULT: "rgb(var(--c-surface) / <alpha-value>)",
+          light: "rgb(var(--c-surface) / <alpha-value>)",
+          deep: "rgb(var(--c-bg) / <alpha-value>)",
         },
-        track: "#EDE4D3",
+        track: "rgb(var(--c-text) / <alpha-value>)",
         brass: {
-          DEFAULT: "#B08D57",
-          light: "#D4B483",
+          DEFAULT: "rgb(var(--c-accent) / <alpha-value>)",
+          light: "rgb(var(--c-muted) / <alpha-value>)",
         },
+        // Dark text that sits on top of the accent color (orange buttons);
+        // stays dark in both themes.
+        ink: "rgb(var(--c-ink) / <alpha-value>)",
         felt: "#2F5233",
-        skunk: "#A13D2B",
+        skunk: "rgb(var(--c-danger) / <alpha-value>)",
       },
       fontFamily: {
         display: ["var(--font-fraunces)", "serif"],

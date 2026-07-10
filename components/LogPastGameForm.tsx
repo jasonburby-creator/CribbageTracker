@@ -194,7 +194,7 @@ export default function LogPastGameForm({
           type="checkbox"
           checked={isTieFlip}
           onChange={(e) => setIsTieFlip(e.target.checked)}
-          className="mt-1 w-4 h-4 accent-[#B08D57]"
+          className="mt-1 w-4 h-4 accent-brass"
         />
         <span className="text-sm text-track">
           <span className="block">Cut for deal was a tie — double odds</span>
@@ -273,7 +273,7 @@ export default function LogPastGameForm({
         <button
           onClick={handleSubmit}
           disabled={busy}
-          className="flex-1 bg-brass text-walnut-deep font-display font-semibold rounded-lg py-2.5 disabled:opacity-50"
+          className="flex-1 bg-brass text-ink font-display font-semibold rounded-lg py-2.5 disabled:opacity-50"
         >
           {submitting ? "Saving…" : editing ? "Save changes" : "Save game"}
         </button>

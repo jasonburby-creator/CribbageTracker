@@ -250,7 +250,7 @@ export default function TripPage() {
         <div className="space-y-2">
           <button
             onClick={() => setShowNewGameForm(true)}
-            className="w-full bg-brass text-walnut-deep font-display font-semibold text-lg py-3 rounded-lg hover:bg-brass-light transition-colors"
+            className="w-full bg-brass text-ink font-display font-semibold text-lg py-3 rounded-lg hover:brightness-110 transition-[filter]"
           >
             Deal a new game
           </button>
