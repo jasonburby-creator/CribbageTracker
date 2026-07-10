@@ -105,6 +105,132 @@ export function computeTripSummary(
   return summary;
 }
 
+export type PlayerTally = {
+  playerId: string;
+  name: string;
+  wins: number; // raw game count
+  winPoints: number; // sum of win_weight (skunk-weighted)
+  skunks: number;
+  doubleSkunks: number;
+  netCents: number; // positive = this player is up
+};
+
+export type HeadToHead = {
+  key: string; // canonical, order-independent pair key
+  gamesPlayed: number;
+  players: [PlayerTally, PlayerTally];
+};
+
+type TallyTrip = {
+  id: string;
+  player1_id: string;
+  player2_id: string;
+  player1?: { name: string } | null;
+  player2?: { name: string } | null;
+};
+
+type TallyGame = {
+  trip_id: string;
+  status: string;
+  winner_player: 1 | 2 | null;
+  is_skunk: boolean;
+  is_double_skunk: boolean;
+  payout_cents: number | null;
+  win_weight: number | null;
+};
+
+/**
+ * Aggregates completed games into all-time head-to-head records, one per
+ * unique pair of players. A person can be player1 in one trip and player2 in
+ * another, so results are keyed by real player id (not by trip position).
+ */
+export function computeHeadToHeads(
+  trips: TallyTrip[],
+  games: TallyGame[]
+): HeadToHead[] {
+  const tripById = new Map(trips.map((t) => [t.id, t]));
+
+  const pairs = new Map<
+    string,
+    { tallies: Map<string, PlayerTally>; order: string[]; gamesPlayed: number }
+  >();
+
+  const blankTally = (playerId: string, name: string): PlayerTally => ({
+    playerId,
+    name,
+    wins: 0,
+    winPoints: 0,
+    skunks: 0,
+    doubleSkunks: 0,
+    netCents: 0,
+  });
+
+  for (const g of games) {
+    if (g.status !== "completed" || !g.winner_player) continue;
+    const trip = tripById.get(g.trip_id);
+    if (!trip) continue;
+
+    const p1 = { id: trip.player1_id, name: trip.player1?.name ?? "Player 1" };
+    const p2 = { id: trip.player2_id, name: trip.player2?.name ?? "Player 2" };
+    // Canonical pair key so A-vs-B and B-vs-A collapse into one bucket.
+    const order = [p1.id, p2.id].sort();
+    const key = order.join("|");
+
+    let bucket = pairs.get(key);
+    if (!bucket) {
+      bucket = {
+        tallies: new Map([
+          [p1.id, blankTally(p1.id, p1.name)],
+          [p2.id, blankTally(p2.id, p2.name)],
+        ]),
+        order,
+        gamesPlayed: 0,
+      };
+      pairs.set(key, bucket);
+    }
+    // Keep the freshest known name for each player.
+    bucket.tallies.get(p1.id)!.name = p1.name;
+    bucket.tallies.get(p2.id)!.name = p2.name;
+
+    const winnerId = g.winner_player === 1 ? p1.id : p2.id;
+    const loserId = g.winner_player === 1 ? p2.id : p1.id;
+    const winner = bucket.tallies.get(winnerId)!;
+    const loser = bucket.tallies.get(loserId)!;
+    const payout = g.payout_cents ?? 0;
+
+    bucket.gamesPlayed += 1;
+    winner.wins += 1;
+    winner.winPoints += g.win_weight ?? 1;
+    winner.netCents += payout;
+    loser.netCents -= payout;
+    if (g.is_double_skunk) winner.doubleSkunks += 1;
+    else if (g.is_skunk) winner.skunks += 1;
+  }
+
+  return [...pairs.values()]
+    .map((bucket) => ({
+      key: bucket.order.join("|"),
+      gamesPlayed: bucket.gamesPlayed,
+      players: [
+        bucket.tallies.get(bucket.order[0])!,
+        bucket.tallies.get(bucket.order[1])!,
+      ] as [PlayerTally, PlayerTally],
+    }))
+    .sort((a, b) => b.gamesPlayed - a.gamesPlayed);
+}
+
+/**
+ * Sorts games newest-first by the date they were actually played
+ * (completed_at), falling back to created_at when a game has no completed_at.
+ */
+export function sortGamesByPlayedDesc<
+  T extends { completed_at: string | null; created_at: string }
+>(games: T[]): T[] {
+  return [...games].sort((a, b) =>
+    (b.completed_at ?? b.created_at).localeCompare(a.completed_at ?? a.created_at)
+  );
+}
+
 export function formatCents(cents: number): string {
   const dollars = cents / 100;
   return dollars.toLocaleString("en-US", {
