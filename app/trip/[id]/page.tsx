@@ -99,6 +99,7 @@ export default function TripPage() {
       location: payload.location || null,
       payout_cents: result.payoutCents,
       win_weight: result.winWeight,
+      hands_played: payload.handsPlayed,
       created_at: payload.playedAt,
       completed_at: payload.playedAt,
     };

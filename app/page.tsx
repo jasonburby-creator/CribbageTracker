@@ -31,7 +31,7 @@ export default function HomePage() {
       supabase
         .from("games")
         .select(
-          "trip_id, status, winner_player, is_skunk, is_double_skunk, payout_cents, win_weight"
+          "trip_id, status, winner_player, is_skunk, is_double_skunk, payout_cents, win_weight, player1_score, player2_score, hands_played"
         )
         .eq("status", "completed"),
     ]);

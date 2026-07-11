@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { computeGameResult } from "@/lib/scoring";
+import PhotoThumb from "@/components/PhotoThumb";
 import type { Game, Trip } from "@/lib/types";
 
 function toLocalDatetimeInputValue(d: Date) {
@@ -17,6 +18,7 @@ export type PastGamePayload = {
   isTieFlip: boolean;
   location: string;
   playedAt: string;
+  handsPlayed: number | null;
 };
 
 export type PhotoChange = {
@@ -48,6 +50,9 @@ export default function LogPastGameForm({
   );
   const [isTieFlip, setIsTieFlip] = useState(game?.is_tie_flip ?? false);
   const [location, setLocation] = useState(game?.location ?? "");
+  const [handsPlayed, setHandsPlayed] = useState(
+    game?.hands_played != null ? String(game.hands_played) : ""
+  );
   const [playedAt, setPlayedAt] = useState(
     toLocalDatetimeInputValue(
       new Date(game?.completed_at ?? game?.created_at ?? Date.now())
@@ -98,6 +103,7 @@ export default function LogPastGameForm({
     setError(null);
     setSubmitting(true);
     try {
+      const handsNum = parseInt(handsPlayed, 10);
       await onSubmit(
         {
           player1Score: s1,
@@ -105,6 +111,7 @@ export default function LogPastGameForm({
           isTieFlip,
           location: location.trim(),
           playedAt: new Date(playedAt).toISOString(),
+          handsPlayed: Number.isFinite(handsNum) && handsNum > 0 ? handsNum : null,
         },
         { file: photoFile, remove: removePhoto }
       );
@@ -189,6 +196,22 @@ export default function LogPastGameForm({
         />
       </div>
 
+      <div>
+        <label className="block text-xs uppercase tracking-widest text-brass-light/70 mb-1">
+          Hands played (optional)
+        </label>
+        <input
+          value={handsPlayed}
+          onChange={(e) => setHandsPlayed(e.target.value)}
+          inputMode="numeric"
+          placeholder="e.g. 11"
+          className="w-full bg-walnut-deep border border-brass/40 rounded-lg px-3 py-2 text-track placeholder:text-track/30"
+        />
+        <p className="text-xs text-track/40 mt-1">
+          Number of deals — powers points-per-hand stats.
+        </p>
+      </div>
+
       <label className="flex items-start gap-3 cursor-pointer">
         <input
           type="checkbox"
@@ -214,8 +237,7 @@ export default function LogPastGameForm({
         />
         {shownPhoto ? (
           <div className="flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <PhotoThumb
               src={shownPhoto}
               alt="Game photo"
               className="w-16 h-16 rounded-lg object-cover border border-brass/30"

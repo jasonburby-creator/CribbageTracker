@@ -41,6 +41,7 @@ export type Game = {
   photo_url: string | null;
   payout_cents: number | null;
   win_weight: number | null;
+  hands_played: number | null;
   events: ScoreEvent[];
   created_at: string;
   completed_at: string | null;

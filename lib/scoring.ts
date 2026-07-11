@@ -113,6 +113,13 @@ export type PlayerTally = {
   skunks: number;
   doubleSkunks: number;
   netCents: number; // positive = this player is up
+  // Σ(winnerScore capped at 121 − loserScore) over this player's wins.
+  winMarginSum: number;
+  // Accumulated only over games where hands_played is recorded, for per-hand rates.
+  handsTotal: number;
+  pointsInHandGames: number; // this player's capped score summed
+  skunksInHandGames: number;
+  doubleSkunksInHandGames: number;
 };
 
 export type HeadToHead = {
@@ -137,6 +144,9 @@ type TallyGame = {
   is_double_skunk: boolean;
   payout_cents: number | null;
   win_weight: number | null;
+  player1_score: number;
+  player2_score: number;
+  hands_played: number | null;
 };
 
 /**
@@ -163,6 +173,11 @@ export function computeHeadToHeads(
     skunks: 0,
     doubleSkunks: 0,
     netCents: 0,
+    winMarginSum: 0,
+    handsTotal: 0,
+    pointsInHandGames: 0,
+    skunksInHandGames: 0,
+    doubleSkunksInHandGames: 0,
   });
 
   for (const g of games) {
@@ -198,13 +213,33 @@ export function computeHeadToHeads(
     const loser = bucket.tallies.get(loserId)!;
     const payout = g.payout_cents ?? 0;
 
+    // Scores capped at 121 (older rows can overshoot from before the cap).
+    const winnerScore = Math.min(
+      WINNING_SCORE,
+      Math.max(g.player1_score, g.player2_score)
+    );
+    const loserScore = Math.min(g.player1_score, g.player2_score);
+
     bucket.gamesPlayed += 1;
     winner.wins += 1;
     winner.winPoints += g.win_weight ?? 1;
     winner.netCents += payout;
     loser.netCents -= payout;
+    winner.winMarginSum += winnerScore - loserScore;
     if (g.is_double_skunk) winner.doubleSkunks += 1;
     else if (g.is_skunk) winner.skunks += 1;
+
+    // Per-hand accumulators only for games with a recorded hand count.
+    if (g.hands_played && g.hands_played > 0) {
+      const winnerCapped = winnerScore;
+      const loserCapped = loserScore;
+      winner.handsTotal += g.hands_played;
+      loser.handsTotal += g.hands_played;
+      winner.pointsInHandGames += winnerCapped;
+      loser.pointsInHandGames += loserCapped;
+      if (g.is_double_skunk) winner.doubleSkunksInHandGames += 1;
+      else if (g.is_skunk) winner.skunksInHandGames += 1;
+    }
   }
 
   return [...pairs.values()]

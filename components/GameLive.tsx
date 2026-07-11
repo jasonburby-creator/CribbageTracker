@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PeggingBoard from "@/components/PeggingBoard";
+import PhotoThumb from "@/components/PhotoThumb";
 import { computeGameResult, WINNING_SCORE } from "@/lib/scoring";
 import { uploadGamePhoto } from "@/lib/photo";
 import type { Game, ScoreEvent, Trip } from "@/lib/types";
@@ -64,8 +65,9 @@ export default function GameLive({
     if (busy || game.status !== "in_progress") return;
     setBusy(true);
     const events = [...game.events, { player, points, at: new Date().toISOString() } as ScoreEvent];
-    const p1 = scoreFromEvents(events, 1);
-    const p2 = scoreFromEvents(events, 2);
+    // Cribbage tops out at 121 — clamp so a final tap can't overshoot.
+    const p1 = Math.min(WINNING_SCORE, scoreFromEvents(events, 1));
+    const p2 = Math.min(WINNING_SCORE, scoreFromEvents(events, 2));
 
     const gameOver = p1 >= WINNING_SCORE || p2 >= WINNING_SCORE;
 
@@ -149,8 +151,8 @@ export default function GameLive({
       ...game.events,
       { player, points: delta, at: new Date().toISOString() } as ScoreEvent,
     ];
-    const p1 = scoreFromEvents(events, 1);
-    const p2 = scoreFromEvents(events, 2);
+    const p1 = Math.min(WINNING_SCORE, scoreFromEvents(events, 1));
+    const p2 = Math.min(WINNING_SCORE, scoreFromEvents(events, 2));
     const gameOver = delta > 0 && (p1 >= WINNING_SCORE || p2 >= WINNING_SCORE);
 
     const base = { player1_score: p1, player2_score: p2, events };
@@ -209,10 +211,26 @@ export default function GameLive({
         .single();
       if (data) onGameChange(data as Game);
     } catch (err) {
-      setPhotoError("Couldn't upload that photo — try again.");
+      const msg = err instanceof Error ? err.message : String(err);
+      setPhotoError(`Couldn't upload that photo — ${msg}`);
     } finally {
       setUploadingPhoto(false);
     }
+  }
+
+  // Record how many hands (deals) this game took — powers the recap and the
+  // all-time per-hand stats.
+  async function setHands(value: string) {
+    const n = parseInt(value, 10);
+    const hands = Number.isFinite(n) && n > 0 ? n : null;
+    if (hands === game.hands_played) return;
+    const { data } = await supabase
+      .from("games")
+      .update({ hands_played: hands })
+      .eq("id", game.id)
+      .select()
+      .single();
+    if (data) onGameChange(data as Game);
   }
 
   const p1Name = trip.player1?.name ?? "Player 1";
@@ -272,7 +290,7 @@ export default function GameLive({
 
           <div className="mt-4">
             {game.photo_url ? (
-              <img
+              <PhotoThumb
                 src={game.photo_url}
                 alt="Winner's photo"
                 className="mx-auto rounded-lg max-h-64 border border-brass/30"
@@ -283,7 +301,6 @@ export default function GameLive({
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   className="hidden"
                   onChange={(e) => handlePhotoSelect(e.target.files?.[0])}
                 />
@@ -298,6 +315,28 @@ export default function GameLive({
                 </button>
                 {photoError && <p className="text-xs text-skunk mt-1">{photoError}</p>}
               </>
+            )}
+          </div>
+
+          {/* Recap: hands played + points per hand */}
+          <div className="mt-4 pt-3 border-t border-brass/20">
+            <div className="flex items-center justify-center gap-2 text-sm text-track/70">
+              <label htmlFor="hands-played">Hands this game</label>
+              <input
+                id="hands-played"
+                inputMode="numeric"
+                defaultValue={game.hands_played ?? ""}
+                onBlur={(e) => setHands(e.target.value)}
+                placeholder="—"
+                className="w-16 bg-walnut-deep border border-brass/30 rounded-md px-2 py-1 text-center font-score text-track"
+              />
+            </div>
+            {game.hands_played && game.hands_played > 0 && (
+              <p className="text-xs text-track/50 text-center mt-2">
+                {game.hands_played} hand{game.hands_played === 1 ? "" : "s"} ·{" "}
+                {p1Name} {(Math.min(game.player1_score, WINNING_SCORE) / game.hands_played).toFixed(1)} ·{" "}
+                {p2Name} {(Math.min(game.player2_score, WINNING_SCORE) / game.hands_played).toFixed(1)} pts/hand
+              </p>
             )}
           </div>
         </div>

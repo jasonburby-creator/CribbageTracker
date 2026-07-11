@@ -37,6 +37,7 @@ create table if not exists games (
   photo_url text,
   payout_cents integer,
   win_weight smallint,
+  hands_played integer,
   events jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   completed_at timestamptz
@@ -46,6 +47,7 @@ create table if not exists games (
 alter table games add column if not exists is_tie_flip boolean not null default false;
 alter table games add column if not exists location text;
 alter table games add column if not exists photo_url text;
+alter table games add column if not exists hands_played integer;
 alter table trips add column if not exists per_point_cents integer not null default 10;
 
 create index if not exists idx_games_trip_id on games(trip_id);
