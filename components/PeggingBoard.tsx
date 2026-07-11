@@ -92,16 +92,6 @@ export default function PeggingBoard({
       <rect x="6" y="8" width="388" height="152" rx="20" fill="#7A848B" stroke="#3A3D40" strokeWidth="3" />
       <rect x="12" y="14" width="376" height="140" rx="15" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="1.5" />
 
-      {/* board-name badge */}
-      {boardName && (
-        <>
-          <rect x="300" y="132" width="78" height="18" rx="9" fill={P2_COLOR} opacity="0.9" />
-          <text x="339" y="144" textAnchor="middle" fontSize="8" letterSpacing="1.5" fill="#F4F4F1" style={{ fontFamily: "var(--font-inter), sans-serif" }}>
-            {boardName.toUpperCase().slice(0, 14)}
-          </text>
-        </>
-      )}
-
       {/* skunk / double-skunk markers — neutral gray so they don't read as pegs */}
       {markers.map((m) => {
         const x = xFor(m.score);

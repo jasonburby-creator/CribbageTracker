@@ -8,7 +8,7 @@ import { computeGameResult, WINNING_SCORE } from "@/lib/scoring";
 import { uploadGamePhoto } from "@/lib/photo";
 import type { Game, ScoreEvent, Trip } from "@/lib/types";
 
-const QUICK_POINTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 14, 16];
+const QUICK_POINTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14];
 
 function scoreFromEvents(events: ScoreEvent[], player: 1 | 2) {
   return events
