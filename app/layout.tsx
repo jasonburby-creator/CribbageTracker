@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
 // Runs before paint to avoid a flash of the wrong theme: use the saved
 // preference if set, otherwise pick by time of day (dark 7pm–7am).
@@ -27,7 +28,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Skunk Line — Cribbage Trip Tracker",
+  title: "Skunk Life — Cribbage Trip Tracker",
   description: "Live cribbage scoring and trip winnings tracker.",
   manifest: "/manifest.json",
 };
@@ -44,6 +45,7 @@ export default function RootLayout({
       >
         {/* Sets the theme class before paint to avoid a flash of wrong theme. */}
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        <ServiceWorkerRegister />
         <ThemeToggle />
         {children}
       </body>

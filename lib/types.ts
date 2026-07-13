@@ -39,6 +39,8 @@ export type Game = {
   is_tie_flip: boolean;
   location: string | null;
   photo_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
   payout_cents: number | null;
   win_weight: number | null;
   hands_played: number | null;

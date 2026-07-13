@@ -54,7 +54,7 @@ export default function HomePage() {
     <main className="max-w-md mx-auto px-5 py-10">
       <header className="mb-8 text-center">
         <p className="uppercase tracking-[0.35em] text-brass-light/70 text-xs mb-2">
-          Skunk Line
+          Skunk Life
         </p>
         <h1 className="font-display italic text-4xl text-track">
           Cribbage Trips

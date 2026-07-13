@@ -6,6 +6,9 @@ import PeggingBoard from "@/components/PeggingBoard";
 import PhotoThumb from "@/components/PhotoThumb";
 import { computeGameResult, WINNING_SCORE } from "@/lib/scoring";
 import { uploadGamePhoto } from "@/lib/photo";
+import { enqueuePhoto } from "@/lib/uploadQueue";
+import { getCurrentCoords } from "@/lib/geo";
+import type { Coords } from "@/lib/geo";
 import type { Game, ScoreEvent, Trip } from "@/lib/types";
 
 const QUICK_POINTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14];
@@ -35,6 +38,8 @@ export default function GameLive({
   const [busy, setBusy] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoQueued, setPhotoQueued] = useState(false);
+  const [queuedPreview, setQueuedPreview] = useState<string | null>(null);
   const [showAdjust, setShowAdjust] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -196,22 +201,54 @@ export default function GameLive({
     setBusy(false);
   }
 
+  // Save the picked photo for later upload (offline or on failure).
+  async function queuePhoto(file: File, coords: Coords | null): Promise<boolean> {
+    const ok = await enqueuePhoto(game.id, file, coords);
+    if (ok) {
+      setQueuedPreview(URL.createObjectURL(file));
+      setPhotoQueued(true);
+    }
+    return ok;
+  }
+
   async function handlePhotoSelect(file: File | undefined) {
     if (!file) return;
     setPhotoError(null);
+    setPhotoQueued(false);
+
+    // Grab where this photo was taken so it can pin on the trip-review map.
+    // Never blocks the upload — a missing fix just means no pin.
+    const coords = await getCurrentCoords();
+
+    // Offline: don't even try — stash it and it'll upload when back online.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const ok = await queuePhoto(file, coords);
+      if (!ok) setPhotoError("You're offline and this photo couldn't be saved to retry.");
+      return;
+    }
+
     setUploadingPhoto(true);
     try {
       const photoUrl = await uploadGamePhoto(game.id, file);
+      const patch: Partial<Game> = { photo_url: photoUrl };
+      if (coords) {
+        patch.latitude = coords.latitude;
+        patch.longitude = coords.longitude;
+      }
       const { data } = await supabase
         .from("games")
-        .update({ photo_url: photoUrl })
+        .update(patch)
         .eq("id", game.id)
         .select()
         .single();
       if (data) onGameChange(data as Game);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setPhotoError(`Couldn't upload that photo — ${msg}`);
+      // Likely a dropped connection mid-upload — queue it to retry rather than lose it.
+      const ok = await queuePhoto(file, coords);
+      if (!ok) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setPhotoError(`Couldn't upload that photo — ${msg}`);
+      }
     } finally {
       setUploadingPhoto(false);
     }
@@ -294,6 +331,19 @@ export default function GameLive({
                 alt="Winner's photo"
                 className="mx-auto rounded-lg max-h-64 border border-brass/30"
               />
+            ) : photoQueued ? (
+              <div>
+                {queuedPreview && (
+                  <img
+                    src={queuedPreview}
+                    alt="Photo waiting to upload"
+                    className="mx-auto rounded-lg max-h-64 border border-brass/30 opacity-80"
+                  />
+                )}
+                <p className="text-xs text-brass-light/80 mt-2">
+                  📶 Saved — uploads when you're back online
+                </p>
+              </div>
             ) : (
               <>
                 <input

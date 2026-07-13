@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import TripSummary from "@/components/TripSummary";
+import TripReview from "@/components/TripReview";
 import PhotoThumb from "@/components/PhotoThumb";
 import PullToRefresh from "@/components/PullToRefresh";
 import { formatCents, sortGamesByPlayedDesc } from "@/lib/scoring";
@@ -18,6 +19,7 @@ export default function ArchivedTripPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [showReview, setShowReview] = useState(false);
 
   async function deleteTrip() {
     if (
@@ -85,6 +87,23 @@ export default function ArchivedTripPage() {
           {trip.ended_at ? new Date(trip.ended_at).toLocaleDateString() : ""}
         </p>
       </header>
+
+      {games.some((g) => g.photo_url) && (
+        <button
+          onClick={() => setShowReview(true)}
+          className="w-full mb-6 bg-brass text-ink font-display font-semibold text-lg py-3 rounded-lg hover:brightness-110 transition-[filter]"
+        >
+          ▶ Trip review
+        </button>
+      )}
+
+      {showReview && (
+        <TripReview
+          trip={trip}
+          games={games}
+          onClose={() => setShowReview(false)}
+        />
+      )}
 
       <TripSummary trip={trip} games={games} />
 

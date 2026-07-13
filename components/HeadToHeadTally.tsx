@@ -13,6 +13,8 @@ export default function HeadToHeadTally({ heads }: { heads: HeadToHead[] }) {
         const [a, b] = h.players;
         // net from a's perspective: positive means a is up on b.
         const net = a.netCents;
+        // All-time tallies: games played and combined win-points.
+        const totalPoints = a.winPoints + b.winPoints;
         return (
           <div
             key={h.key}
@@ -20,7 +22,8 @@ export default function HeadToHeadTally({ heads }: { heads: HeadToHead[] }) {
           >
             <p className="text-xs uppercase tracking-widest text-brass-light/60 mb-3">
               All-time · {a.name} vs {b.name} · {h.gamesPlayed} game
-              {h.gamesPlayed === 1 ? "" : "s"}
+              {h.gamesPlayed === 1 ? "" : "s"} · {totalPoints} pt
+              {totalPoints === 1 ? "" : "s"} total
             </p>
             <div className="grid grid-cols-2 gap-4">
               {[a, b].map((p) => {

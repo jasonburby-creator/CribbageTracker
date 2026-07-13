@@ -10,6 +10,7 @@ import NewGameForm from "@/components/NewGameForm";
 import LogPastGameForm from "@/components/LogPastGameForm";
 import type { PastGamePayload, PhotoChange } from "@/components/LogPastGameForm";
 import TripSummary from "@/components/TripSummary";
+import TripReview from "@/components/TripReview";
 import PhotoThumb from "@/components/PhotoThumb";
 import PullToRefresh from "@/components/PullToRefresh";
 import { formatCents, computeGameResult, sortGamesByPlayedDesc } from "@/lib/scoring";
@@ -29,6 +30,7 @@ export default function TripPage() {
   const [showNewGameForm, setShowNewGameForm] = useState(false);
   const [showLogPastGame, setShowLogPastGame] = useState(false);
   const [showEditTrip, setShowEditTrip] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
 
   async function loadAll() {
@@ -270,6 +272,23 @@ export default function TripPage() {
       <div className="mt-8">
         <TripSummary trip={trip} games={games} />
       </div>
+
+      {games.some((g) => g.photo_url) && (
+        <button
+          onClick={() => setShowReview(true)}
+          className="w-full mt-4 border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm"
+        >
+          ▶ Trip review
+        </button>
+      )}
+
+      {showReview && (
+        <TripReview
+          trip={trip}
+          games={games}
+          onClose={() => setShowReview(false)}
+        />
+      )}
 
       {completedGames.length > 0 && (
         <div className="mt-6">
