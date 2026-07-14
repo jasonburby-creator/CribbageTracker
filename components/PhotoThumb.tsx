@@ -21,13 +21,10 @@ export default function PhotoThumb({
       if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
-    // Stop the page behind the lightbox from scrolling.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
+    return () => window.removeEventListener("keydown", onKey);
+    // NOTE: we deliberately do NOT lock document.body.style.overflow here. The
+    // fixed full-screen overlay already covers the page, and a leaked lock (if
+    // the overlay ever failed to close) froze scrolling until an app restart.
   }, [open]);
 
   return (
@@ -47,9 +44,10 @@ export default function PhotoThumb({
           onClick={() => setOpen(false)}
           role="dialog"
           aria-modal="true"
-          // h-screen is the fallback; the inline 100dvh uses the *visible*
-          // viewport so the image isn't cut off behind mobile browser bars.
-          // No `bottom`/inset-0 constraint, which would override the height.
+          // Tapping anywhere (image or backdrop) closes it. h-screen is the
+          // fallback; the inline 100dvh uses the *visible* viewport so the image
+          // isn't cut off behind mobile browser bars. No `bottom`/inset-0
+          // constraint, which would override the height.
           className="fixed left-0 right-0 top-0 z-50 h-screen flex items-center justify-center bg-black/90 p-3"
           style={{ height: "100dvh" }}
         >
@@ -57,17 +55,23 @@ export default function PhotoThumb({
           <img
             src={src}
             alt={alt}
-            onClick={(e) => e.stopPropagation()}
-            className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+            className="max-h-full max-w-full rounded-lg object-contain shadow-2xl pointer-events-none"
           />
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close"
-            className="absolute top-3 right-4 text-white/80 hover:text-white text-4xl leading-none"
+            aria-label="Close photo"
+            className="absolute right-4 flex items-center justify-center h-11 w-11 rounded-full bg-black/60 text-white text-3xl leading-none border border-white/40 hover:bg-black/80"
+            style={{ top: "max(1rem, env(safe-area-inset-top))" }}
           >
             ×
           </button>
+          <p
+            className="absolute left-0 right-0 text-center text-white/70 text-xs"
+            style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
+          >
+            Tap anywhere to close
+          </p>
         </div>
       )}
     </>
