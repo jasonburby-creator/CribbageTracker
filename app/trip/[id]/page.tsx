@@ -13,7 +13,12 @@ import TripSummary from "@/components/TripSummary";
 import TripReview from "@/components/TripReview";
 import PhotoThumb from "@/components/PhotoThumb";
 import PullToRefresh from "@/components/PullToRefresh";
-import { formatCents, computeGameResult, sortGamesByPlayedDesc } from "@/lib/scoring";
+import {
+  formatCents,
+  computeGameResult,
+  sortGamesByPlayedDesc,
+  WINNING_SCORE,
+} from "@/lib/scoring";
 import { uploadGamePhoto } from "@/lib/photo";
 import type { Game, Trip } from "@/lib/types";
 
@@ -91,8 +96,9 @@ export default function TripPage() {
     // Fields common to insert and update. `events` is left untouched on edit
     // so a live-pegged game keeps its point-by-point history.
     const fields = {
-      player1_score: payload.player1Score,
-      player2_score: payload.player2Score,
+      // Never store a score above 121, even if a raw value slips through.
+      player1_score: Math.min(WINNING_SCORE, payload.player1Score),
+      player2_score: Math.min(WINNING_SCORE, payload.player2Score),
       status: "completed" as const,
       winner_player: result.winnerPlayer,
       is_skunk: result.isSkunk,

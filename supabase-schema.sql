@@ -54,6 +54,20 @@ alter table games add column if not exists latitude double precision;
 alter table games add column if not exists longitude double precision;
 alter table trips add column if not exists per_point_cents integer not null default 10;
 
+-- Scores can never exceed 121 (the winning score). Cap any legacy rows first,
+-- then hard-guarantee it at the database level so no path can ever store more.
+update games set player1_score = 121 where player1_score > 121;
+update games set player2_score = 121 where player2_score > 121;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'games_scores_max_121'
+  ) then
+    alter table games add constraint games_scores_max_121
+      check (player1_score <= 121 and player2_score <= 121);
+  end if;
+end $$;
+
 create index if not exists idx_games_trip_id on games(trip_id);
 create index if not exists idx_trips_status on trips(status);
 

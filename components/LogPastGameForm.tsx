@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { computeGameResult } from "@/lib/scoring";
+import { computeGameResult, WINNING_SCORE } from "@/lib/scoring";
 import PhotoThumb from "@/components/PhotoThumb";
 import type { Game, Trip } from "@/lib/types";
 
@@ -70,8 +70,16 @@ export default function LogPastGameForm({
 
   const s1 = parseInt(p1Score, 10);
   const s2 = parseInt(p2Score, 10);
+  // A valid final score: both non-negative and different, the winner reached
+  // 121, and the loser is below 121 (both players can't be at 121).
   const validScores =
-    !isNaN(s1) && !isNaN(s2) && s1 >= 0 && s2 >= 0 && s1 !== s2 && Math.max(s1, s2) >= 121;
+    !isNaN(s1) &&
+    !isNaN(s2) &&
+    s1 >= 0 &&
+    s2 >= 0 &&
+    s1 !== s2 &&
+    Math.max(s1, s2) >= WINNING_SCORE &&
+    Math.min(s1, s2) < WINNING_SCORE;
 
   const preview =
     validScores && trip
@@ -97,7 +105,9 @@ export default function LogPastGameForm({
 
   async function handleSubmit() {
     if (!validScores) {
-      setError("Enter final scores — one player must have reached at least 121.");
+      setError(
+        "Enter final scores — the winner reaches 121 and the other player is below 121."
+      );
       return;
     }
     setError(null);
@@ -106,8 +116,9 @@ export default function LogPastGameForm({
       const handsNum = parseInt(handsPlayed, 10);
       await onSubmit(
         {
-          player1Score: s1,
-          player2Score: s2,
+          // Cap the winner at 121 — a game never records above the winning score.
+          player1Score: Math.min(WINNING_SCORE, s1),
+          player2Score: Math.min(WINNING_SCORE, s2),
           isTieFlip,
           location: location.trim(),
           playedAt: new Date(playedAt).toISOString(),
