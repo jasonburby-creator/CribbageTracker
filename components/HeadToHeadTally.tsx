@@ -33,11 +33,11 @@ export default function HeadToHeadTally({ heads }: { heads: HeadToHead[] }) {
                   <div key={p.playerId}>
                     <p className="font-display text-lg text-track">{p.name}</p>
                     <p className="text-sm text-track/70">
-                      <span className="font-score text-track">{p.wins}</span> win
-                      {p.wins === 1 ? "" : "s"}
+                      <span className="font-score text-track">{p.winPoints}</span> pt
+                      {p.winPoints === 1 ? "" : "s"}
                       <span className="text-track/50">
                         {" "}
-                        ({p.winPoints} pt{p.winPoints === 1 ? "" : "s"})
+                        ({p.wins} win{p.wins === 1 ? "" : "s"})
                       </span>
                     </p>
                     {(p.skunks > 0 || p.doubleSkunks > 0) && (
@@ -54,7 +54,7 @@ export default function HeadToHeadTally({ heads }: { heads: HeadToHead[] }) {
                     )}
                     <div className="mt-1.5 space-y-0.5 text-xs text-track/50">
                       {avgMargin !== null && (
-                        <p>Avg win by {avgMargin.toFixed(1)}</p>
+                        <p>Avg win margin {avgMargin.toFixed(1)} pts</p>
                       )}
                       {hasHands && (
                         <>
