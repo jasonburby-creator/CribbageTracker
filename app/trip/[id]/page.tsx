@@ -36,6 +36,9 @@ export default function TripPage() {
   const [showLogPastGame, setShowLogPastGame] = useState(false);
   const [showEditTrip, setShowEditTrip] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  // A game that just finished — keep its final board + winner on screen until
+  // the players deal the next one or dismiss it, instead of snapping away.
+  const [reviewGameId, setReviewGameId] = useState<string | null>(null);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
 
   async function loadAll() {
@@ -62,6 +65,13 @@ export default function TripPage() {
 
   const activeGame = games.find((g) => g.status === "in_progress") ?? null;
   const completedGames = games.filter((g) => g.status === "completed");
+  // What to show on the board: the live game, or a just-finished game we're
+  // still reviewing (only within this session — a fresh visit shows neither).
+  const reviewGame =
+    reviewGameId && !activeGame
+      ? completedGames.find((g) => g.id === reviewGameId) ?? null
+      : null;
+  const boardGame = activeGame ?? reviewGame;
 
   async function startNewGame(opts: { isTieFlip: boolean; location: string }) {
     const { data } = await supabase
@@ -74,6 +84,7 @@ export default function TripPage() {
       .select()
       .single();
     if (data) setGames((g) => [...g, data as Game]);
+    setReviewGameId(null);
     setShowNewGameForm(false);
   }
 
@@ -170,6 +181,8 @@ export default function TripPage() {
 
   function handleGameChange(updated: Game) {
     setGames((prev) => prev.map((g) => (g.id === updated.id ? updated : g)));
+    // When a game finishes, keep it on the board as the review game.
+    if (updated.status === "completed") setReviewGameId(updated.id);
   }
 
   async function endTrip() {
@@ -228,8 +241,21 @@ export default function TripPage() {
         </p>
       </header>
 
-      {activeGame ? (
-        <GameLive trip={trip} game={activeGame} onGameChange={handleGameChange} />
+      {boardGame ? (
+        <GameLive
+          trip={trip}
+          game={boardGame}
+          onGameChange={handleGameChange}
+          onNextGame={
+            reviewGame
+              ? () => {
+                  setReviewGameId(null);
+                  setShowNewGameForm(true);
+                }
+              : undefined
+          }
+          onDismiss={reviewGame ? () => setReviewGameId(null) : undefined}
+        />
       ) : showEditTrip ? (
         <div className="rounded-xl border border-brass/30 bg-walnut-light/10 p-5">
           <h2 className="font-display text-xl mb-4">Edit trip</h2>

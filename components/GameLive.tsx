@@ -55,10 +55,15 @@ export default function GameLive({
   trip,
   game: gameProp,
   onGameChange,
+  onNextGame,
+  onDismiss,
 }: {
   trip: Trip;
   game: Game;
   onGameChange: (g: Game) => void;
+  // Shown on the game-over summary so players can move on from the final board.
+  onNextGame?: () => void;
+  onDismiss?: () => void;
 }) {
   // Local-first: `game` is the on-device source of truth for the live game so
   // taps land instantly and keep working offline. Changes are persisted and
@@ -405,12 +410,36 @@ export default function GameLive({
       )}
 
       {game.status === "completed" ? (
-        <div className="text-center rounded-xl border border-brass/40 bg-walnut-light/10 py-4 px-4">
-          <p className="font-display text-2xl text-brass-light">
-            {game.winner_player === 1 ? p1Name : p2Name} wins
-            {game.is_double_skunk ? " — double skunk!" : game.is_skunk ? " — skunk!" : ""}
-            {game.is_tie_flip ? " (double odds)" : ""}
+        <div
+          className="text-center rounded-xl border-2 bg-walnut-light/10 py-5 px-4"
+          style={{ borderColor: game.winner_player === 1 ? P1_COLOR : P2_NUM }}
+        >
+          <p className="text-xs uppercase tracking-[0.3em] text-brass-light/70">
+            Game over
           </p>
+          <p
+            className="font-display text-4xl leading-tight mt-1"
+            style={{ color: game.winner_player === 1 ? P1_COLOR : P2_NUM }}
+          >
+            🏆 {game.winner_player === 1 ? p1Name : p2Name} wins
+          </p>
+          <p className="font-score text-2xl text-track mt-1">
+            {Math.max(game.player1_score, game.player2_score)}–
+            {Math.min(game.player1_score, game.player2_score)}
+          </p>
+          {(game.is_double_skunk || game.is_skunk || game.is_tie_flip) && (
+            <p className="text-sm text-skunk font-semibold mt-1">
+              {game.is_double_skunk
+                ? "DOUBLE SKUNK"
+                : game.is_skunk
+                ? "SKUNK"
+                : ""}
+              {(game.is_double_skunk || game.is_skunk) && game.is_tie_flip
+                ? " · "
+                : ""}
+              {game.is_tie_flip ? "DOUBLE ODDS" : ""}
+            </p>
+          )}
 
           <div className="mt-4">
             {game.photo_url ? (
@@ -476,6 +505,27 @@ export default function GameLive({
               </p>
             )}
           </div>
+
+          {(onNextGame || onDismiss) && (
+            <div className="mt-5 flex gap-2">
+              {onNextGame && (
+                <button
+                  onClick={onNextGame}
+                  className="flex-1 bg-brass text-ink font-display font-semibold rounded-lg py-2.5 hover:brightness-110 transition-[filter]"
+                >
+                  Deal next game
+                </button>
+              )}
+              {onDismiss && (
+                <button
+                  onClick={onDismiss}
+                  className="flex-1 border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm"
+                >
+                  Done
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
