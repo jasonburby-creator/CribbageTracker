@@ -127,7 +127,8 @@ export default function LogPastGameForm({
         { file: photoFile, remove: removePhoto }
       );
     } catch (err) {
-      setError("Couldn't save that game — try again.");
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Couldn't save that game — ${msg}`);
       setSubmitting(false);
     }
   }

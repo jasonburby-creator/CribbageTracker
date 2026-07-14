@@ -133,3 +133,14 @@ create policy "public read game photos" on storage.objects
 drop policy if exists "public upload game photos" on storage.objects;
 create policy "public upload game photos" on storage.objects
   for insert with check (bucket_id = 'game-photos');
+
+-- Needed to REPLACE a photo: uploading over an existing file (upsert) is an
+-- update on storage.objects, so without this, replacing a game's photo fails.
+drop policy if exists "public update game photos" on storage.objects;
+create policy "public update game photos" on storage.objects
+  for update using (bucket_id = 'game-photos') with check (bucket_id = 'game-photos');
+
+-- Needed to clean up photos when a game or trip is deleted.
+drop policy if exists "public delete game photos" on storage.objects;
+create policy "public delete game photos" on storage.objects
+  for delete using (bucket_id = 'game-photos');
