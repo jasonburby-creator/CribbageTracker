@@ -7,9 +7,34 @@ import PhotoThumb from "@/components/PhotoThumb";
 import { computeGameResult, WINNING_SCORE } from "@/lib/scoring";
 import { uploadGamePhoto } from "@/lib/photo";
 import { enqueuePhoto } from "@/lib/uploadQueue";
+import {
+  saveGameSnapshot,
+  getGameSnapshot,
+  clearGameSnapshot,
+  pushGameSnapshot,
+  flushGameSnapshots,
+  type GameSnapshot,
+} from "@/lib/gameSync";
 import { getCurrentCoords } from "@/lib/geo";
 import type { Coords } from "@/lib/geo";
 import type { Game, ScoreEvent, Trip } from "@/lib/types";
+
+// The scoring columns we own and sync (photo/location sync separately).
+function snapshotOf(g: Game): GameSnapshot {
+  return {
+    player1_score: g.player1_score,
+    player2_score: g.player2_score,
+    events: g.events,
+    status: g.status,
+    winner_player: g.winner_player,
+    is_skunk: g.is_skunk,
+    is_double_skunk: g.is_double_skunk,
+    payout_cents: g.payout_cents,
+    win_weight: g.win_weight,
+    completed_at: g.completed_at,
+    hands_played: g.hands_played,
+  };
+}
 
 const QUICK_POINTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14];
 
@@ -28,14 +53,24 @@ function prevScoreFromEvents(events: ScoreEvent[], player: 1 | 2) {
 
 export default function GameLive({
   trip,
-  game,
+  game: gameProp,
   onGameChange,
 }: {
   trip: Trip;
   game: Game;
   onGameChange: (g: Game) => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  // Local-first: `game` is the on-device source of truth for the live game so
+  // taps land instantly and keep working offline. Changes are persisted and
+  // synced to Supabase in the background (see mutate / gameSync).
+  const [game, setGame] = useState<Game>(gameProp);
+  const gameRef = useRef<Game>(gameProp);
+  gameRef.current = game;
+  // True while we have local taps not yet confirmed by the server.
+  const pendingRef = useRef(false);
+  const [syncPending, setSyncPending] = useState(false);
+  const [online, setOnline] = useState(true);
+
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoQueued, setPhotoQueued] = useState(false);
@@ -47,14 +82,69 @@ export default function GameLive({
   const P2_COLOR = "#197B8F"; // Trail Blue
   const P2_NUM = "#2FA7BE"; // brighter teal for the big number
 
-  // Subscribe to realtime updates on this game so other phones stay in sync
+  // On open, restore any locally-pending snapshot (taps made while offline that
+  // haven't synced yet) so we don't show stale server scores over them — then
+  // try to sync it immediately if we're online.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const snap = await getGameSnapshot(gameProp.id);
+      if (!alive || !snap) return;
+      pendingRef.current = true;
+      setSyncPending(true);
+      setGame((prev) => ({ ...prev, ...snap }));
+      if (navigator.onLine) {
+        const ok = await pushGameSnapshot(gameProp.id, snap);
+        if (ok && alive) {
+          await clearGameSnapshot(gameProp.id);
+          pendingRef.current = false;
+          setSyncPending(false);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [gameProp.id]);
+
+  // Accept fresh data from the parent (reload / realtime) only when we have no
+  // unsynced local taps — otherwise our local scores would be clobbered.
+  useEffect(() => {
+    if (!pendingRef.current) setGame(gameProp);
+  }, [gameProp]);
+
+  // Track connectivity and drain pending snapshots when it returns.
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    const goOnline = async () => {
+      setOnline(true);
+      await flushGameSnapshots();
+      const still = await getGameSnapshot(gameProp.id);
+      if (!still) {
+        pendingRef.current = false;
+        setSyncPending(false);
+      }
+    };
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, [gameProp.id]);
+
+  // Subscribe to realtime updates so other phones stay in sync — but ignore
+  // them while we hold unsynced local taps.
   useEffect(() => {
     const channel = supabase
-      .channel(`game-${game.id}`)
+      .channel(`game-${gameProp.id}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "games", filter: `id=eq.${game.id}` },
+        { event: "UPDATE", schema: "public", table: "games", filter: `id=eq.${gameProp.id}` },
         (payload) => {
+          if (pendingRef.current) return;
+          setGame(payload.new as Game);
           onGameChange(payload.new as Game);
         }
       )
@@ -63,12 +153,34 @@ export default function GameLive({
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game.id]);
+  }, [gameProp.id]);
 
-  async function addPoints(player: 1 | 2, points: number) {
-    if (busy || game.status !== "in_progress") return;
-    setBusy(true);
-    const events = [...game.events, { player, points, at: new Date().toISOString() } as ScoreEvent];
+  // Apply a scoring change locally (instant), persist it, and try to sync.
+  async function mutate(fields: Partial<Game>) {
+    const next = { ...gameRef.current, ...fields } as Game;
+    gameRef.current = next; // so rapid successive taps read the latest events
+    setGame(next);
+    onGameChange(next); // keep the parent's copy optimistic too
+
+    const snap = snapshotOf(next);
+    pendingRef.current = true;
+    await saveGameSnapshot(next.id, snap);
+    const ok = await pushGameSnapshot(next.id, snap);
+    // Only settle if no newer tap arrived while this push was in flight — the
+    // later mutate owns clearing/settling in that case.
+    if (ok && gameRef.current === next) {
+      await clearGameSnapshot(next.id);
+      pendingRef.current = false;
+      setSyncPending(false);
+    } else if (!ok) {
+      setSyncPending(true);
+    }
+  }
+
+  function addPoints(player: 1 | 2, points: number) {
+    const g = gameRef.current;
+    if (g.status !== "in_progress") return;
+    const events = [...g.events, { player, points, at: new Date().toISOString() } as ScoreEvent];
     // Cribbage tops out at 121 — clamp so a final tap can't overshoot.
     const p1 = Math.min(WINNING_SCORE, scoreFromEvents(events, 1));
     const p2 = Math.min(WINNING_SCORE, scoreFromEvents(events, 2));
@@ -76,14 +188,7 @@ export default function GameLive({
     const gameOver = p1 >= WINNING_SCORE || p2 >= WINNING_SCORE;
 
     if (!gameOver) {
-      const { data } = await supabase
-        .from("games")
-        .update({ player1_score: p1, player2_score: p2, events })
-        .eq("id", game.id)
-        .select()
-        .single();
-      if (data) onGameChange(data as Game);
-      setBusy(false);
+      mutate({ player1_score: p1, player2_score: p2, events });
       return;
     }
 
@@ -91,12 +196,67 @@ export default function GameLive({
       p1,
       p2,
       trip.base_amount_cents,
-      game.is_tie_flip,
+      g.is_tie_flip,
       trip.per_point_cents
     );
-    const { data } = await supabase
-      .from("games")
-      .update({
+    mutate({
+      player1_score: p1,
+      player2_score: p2,
+      events,
+      status: "completed",
+      winner_player: result.winnerPlayer,
+      is_skunk: result.isSkunk,
+      is_double_skunk: result.isDoubleSkunk,
+      payout_cents: result.payoutCents,
+      win_weight: result.winWeight,
+      completed_at: new Date().toISOString(),
+    });
+  }
+
+  function undo() {
+    const g = gameRef.current;
+    if (g.events.length === 0) return;
+    const events = g.events.slice(0, -1);
+    const p1 = scoreFromEvents(events, 1);
+    const p2 = scoreFromEvents(events, 2);
+    mutate({
+      player1_score: p1,
+      player2_score: p2,
+      events,
+      status: "in_progress",
+      winner_player: null,
+      is_skunk: false,
+      is_double_skunk: false,
+      payout_cents: null,
+      win_weight: null,
+      completed_at: null,
+    });
+  }
+
+  // Nudge one player's score by ±1 to fix a mis-count, recorded as a point
+  // event so undo/history stay consistent. A +1 that reaches 121 completes the
+  // game; a −1 pulls a completed game back to in-progress.
+  function adjustScore(player: 1 | 2, delta: 1 | -1) {
+    const g = gameRef.current;
+    const current = scoreFromEvents(g.events, player);
+    if (delta < 0 && current <= 0) return; // don't go below zero
+    const events = [
+      ...g.events,
+      { player, points: delta, at: new Date().toISOString() } as ScoreEvent,
+    ];
+    const p1 = Math.min(WINNING_SCORE, scoreFromEvents(events, 1));
+    const p2 = Math.min(WINNING_SCORE, scoreFromEvents(events, 2));
+    const gameOver = delta > 0 && (p1 >= WINNING_SCORE || p2 >= WINNING_SCORE);
+
+    if (gameOver) {
+      const result = computeGameResult(
+        p1,
+        p2,
+        trip.base_amount_cents,
+        g.is_tie_flip,
+        trip.per_point_cents
+      );
+      mutate({
         player1_score: p1,
         player2_score: p2,
         events,
@@ -107,23 +267,9 @@ export default function GameLive({
         payout_cents: result.payoutCents,
         win_weight: result.winWeight,
         completed_at: new Date().toISOString(),
-      })
-      .eq("id", game.id)
-      .select()
-      .single();
-    if (data) onGameChange(data as Game);
-    setBusy(false);
-  }
-
-  async function undo() {
-    if (busy || game.events.length === 0) return;
-    setBusy(true);
-    const events = game.events.slice(0, -1);
-    const p1 = scoreFromEvents(events, 1);
-    const p2 = scoreFromEvents(events, 2);
-    const { data } = await supabase
-      .from("games")
-      .update({
+      });
+    } else {
+      mutate({
         player1_score: p1,
         player2_score: p2,
         events,
@@ -134,71 +280,8 @@ export default function GameLive({
         payout_cents: null,
         win_weight: null,
         completed_at: null,
-        photo_url: null,
-      })
-      .eq("id", game.id)
-      .select()
-      .single();
-    if (data) onGameChange(data as Game);
-    setBusy(false);
-  }
-
-  // Nudge one player's score by ±1 to fix a mis-count, recorded as a point
-  // event so undo/history stay consistent. A +1 that reaches 121 completes the
-  // game; a −1 pulls a completed game back to in-progress.
-  async function adjustScore(player: 1 | 2, delta: 1 | -1) {
-    if (busy) return;
-    const current = scoreFromEvents(game.events, player);
-    if (delta < 0 && current <= 0) return; // don't go below zero
-    setBusy(true);
-    const events = [
-      ...game.events,
-      { player, points: delta, at: new Date().toISOString() } as ScoreEvent,
-    ];
-    const p1 = Math.min(WINNING_SCORE, scoreFromEvents(events, 1));
-    const p2 = Math.min(WINNING_SCORE, scoreFromEvents(events, 2));
-    const gameOver = delta > 0 && (p1 >= WINNING_SCORE || p2 >= WINNING_SCORE);
-
-    const base = { player1_score: p1, player2_score: p2, events };
-    const update = gameOver
-      ? (() => {
-          const result = computeGameResult(
-            p1,
-            p2,
-            trip.base_amount_cents,
-            game.is_tie_flip,
-            trip.per_point_cents
-          );
-          return {
-            ...base,
-            status: "completed" as const,
-            winner_player: result.winnerPlayer,
-            is_skunk: result.isSkunk,
-            is_double_skunk: result.isDoubleSkunk,
-            payout_cents: result.payoutCents,
-            win_weight: result.winWeight,
-            completed_at: new Date().toISOString(),
-          };
-        })()
-      : {
-          ...base,
-          status: "in_progress" as const,
-          winner_player: null,
-          is_skunk: false,
-          is_double_skunk: false,
-          payout_cents: null,
-          win_weight: null,
-          completed_at: null,
-        };
-
-    const { data } = await supabase
-      .from("games")
-      .update(update)
-      .eq("id", game.id)
-      .select()
-      .single();
-    if (data) onGameChange(data as Game);
-    setBusy(false);
+      });
+    }
   }
 
   // Save the picked photo for later upload (offline or on failure).
@@ -241,7 +324,10 @@ export default function GameLive({
         .eq("id", game.id)
         .select()
         .single();
-      if (data) onGameChange(data as Game);
+      if (data) {
+        setGame((prev) => ({ ...prev, photo_url: (data as Game).photo_url }));
+        onGameChange(data as Game);
+      }
     } catch (err) {
       // Likely a dropped connection mid-upload — queue it to retry rather than lose it.
       const ok = await queuePhoto(file, coords);
@@ -256,17 +342,11 @@ export default function GameLive({
 
   // Record how many hands (deals) this game took — powers the recap and the
   // all-time per-hand stats.
-  async function setHands(value: string) {
+  function setHands(value: string) {
     const n = parseInt(value, 10);
     const hands = Number.isFinite(n) && n > 0 ? n : null;
-    if (hands === game.hands_played) return;
-    const { data } = await supabase
-      .from("games")
-      .update({ hands_played: hands })
-      .eq("id", game.id)
-      .select()
-      .single();
-    if (data) onGameChange(data as Game);
+    if (hands === gameRef.current.hands_played) return;
+    mutate({ hands_played: hands });
   }
 
   const p1Name = trip.player1?.name ?? "Player 1";
@@ -281,6 +361,14 @@ export default function GameLive({
 
   return (
     <div className="space-y-6">
+      {(!online || syncPending) && (
+        <p className="text-center text-xs rounded-lg py-1.5 border border-brass/30 bg-brass/10 text-brass-light">
+          {online
+            ? "Syncing scores…"
+            : "Offline — scores are saved on this phone and sync when you reconnect."}
+        </p>
+      )}
+
       {/* big, prominent scores */}
       <div className="grid grid-cols-2 gap-3">
         {bigScores.map((s) => (
@@ -400,7 +488,6 @@ export default function GameLive({
                 {QUICK_POINTS.map((pts) => (
                   <button
                     key={pts}
-                    disabled={busy}
                     onClick={() => addPoints(player, pts)}
                     className="bg-walnut-light/30 hover:bg-brass hover:text-ink border border-brass/30 rounded-md py-2 text-sm font-score disabled:opacity-40"
                   >
@@ -416,7 +503,7 @@ export default function GameLive({
       <div className="space-y-2">
         <button
           onClick={undo}
-          disabled={busy || game.events.length === 0}
+          disabled={game.events.length === 0}
           className="w-full text-sm text-track/60 border border-brass/20 rounded-lg py-2 disabled:opacity-30"
         >
           ↺ Undo last point
@@ -446,7 +533,7 @@ export default function GameLive({
                   <span className="flex items-center gap-3">
                     <button
                       onClick={() => adjustScore(player, -1)}
-                      disabled={busy || score <= 0}
+                      disabled={score <= 0}
                       className="w-9 h-9 rounded-md border border-brass/40 bg-walnut-light/20 text-track text-lg leading-none disabled:opacity-30"
                       aria-label={`Remove one point from ${name}`}
                     >
@@ -455,7 +542,6 @@ export default function GameLive({
                     <span className="font-score text-lg w-8 text-center">{score}</span>
                     <button
                       onClick={() => adjustScore(player, 1)}
-                      disabled={busy}
                       className="w-9 h-9 rounded-md border border-brass/40 bg-walnut-light/20 text-track text-lg leading-none disabled:opacity-30"
                       aria-label={`Add one point to ${name}`}
                     >
