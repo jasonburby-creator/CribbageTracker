@@ -54,12 +54,16 @@ function prevScoreFromEvents(events: ScoreEvent[], player: 1 | 2) {
 export default function GameLive({
   trip,
   game: gameProp,
+  canEdit = true,
   onGameChange,
   onNextGame,
   onDismiss,
 }: {
   trip: Trip;
   game: Game;
+  // Whether the signed-in user is tied to this trip — false means the board
+  // stays visible but every scoring control is disabled.
+  canEdit?: boolean;
   onGameChange: (g: Game) => void;
   // Shown on the game-over summary so players can move on from the final board.
   onNextGame?: () => void;
@@ -123,6 +127,8 @@ export default function GameLive({
     setOnline(navigator.onLine);
     const goOnline = async () => {
       setOnline(true);
+      // Force a token refresh if the session expired while offline.
+      await supabase.auth.getSession().catch(() => {});
       await flushGameSnapshots();
       const still = await getGameSnapshot(gameProp.id);
       if (!still) {
@@ -317,11 +323,13 @@ export default function GameLive({
 
     setUploadingPhoto(true);
     try {
-      const photoUrl = await uploadGamePhoto(game.id, file);
+      const { url: photoUrl, exifCoords } = await uploadGamePhoto(game.id, file);
+      // Live GPS wins when we have it; otherwise fall back to the photo's own EXIF fix.
+      const pin = coords ?? exifCoords;
       const patch: Partial<Game> = { photo_url: photoUrl };
-      if (coords) {
-        patch.latitude = coords.latitude;
-        patch.longitude = coords.longitude;
+      if (pin) {
+        patch.latitude = pin.latitude;
+        patch.longitude = pin.longitude;
       }
       const { data } = await supabase
         .from("games")
@@ -461,7 +469,7 @@ export default function GameLive({
                   📶 Saved — uploads when you're back online
                 </p>
               </div>
-            ) : (
+            ) : canEdit ? (
               <>
                 <input
                   ref={fileInputRef}
@@ -481,7 +489,7 @@ export default function GameLive({
                 </button>
                 {photoError && <p className="text-xs text-skunk mt-1">{photoError}</p>}
               </>
-            )}
+            ) : null}
           </div>
 
           {/* Recap: hands played + points per hand */}
@@ -493,8 +501,9 @@ export default function GameLive({
                 inputMode="numeric"
                 defaultValue={game.hands_played ?? ""}
                 onBlur={(e) => setHands(e.target.value)}
+                disabled={!canEdit}
                 placeholder="—"
-                className="w-16 bg-walnut-deep border border-brass/30 rounded-md px-2 py-1 text-center font-score text-track"
+                className="w-16 bg-walnut-deep border border-brass/30 rounded-md px-2 py-1 text-center font-score text-track disabled:opacity-40"
               />
             </div>
             {game.hands_played && game.hands_played > 0 && (
@@ -539,6 +548,7 @@ export default function GameLive({
                   <button
                     key={pts}
                     onClick={() => addPoints(player, pts)}
+                    disabled={!canEdit}
                     className="bg-walnut-light/30 hover:bg-brass hover:text-ink border border-brass/30 rounded-md py-2 text-sm font-score disabled:opacity-40"
                   >
                     +{pts}
@@ -553,19 +563,21 @@ export default function GameLive({
       <div className="space-y-2">
         <button
           onClick={undo}
-          disabled={game.events.length === 0}
+          disabled={game.events.length === 0 || !canEdit}
           className="w-full text-sm text-track/60 border border-brass/20 rounded-lg py-2 disabled:opacity-30"
         >
           ↺ Undo last point
         </button>
-        <button
-          onClick={() => setShowAdjust((v) => !v)}
-          className="w-full text-sm text-track/60 border border-brass/20 rounded-lg py-2"
-        >
-          ⚙ Adjust score
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setShowAdjust((v) => !v)}
+            className="w-full text-sm text-track/60 border border-brass/20 rounded-lg py-2"
+          >
+            ⚙ Adjust score
+          </button>
+        )}
 
-        {showAdjust && (
+        {showAdjust && canEdit && (
           <div className="rounded-lg border border-brass/25 bg-walnut-light/10 p-3 space-y-1">
             {([1, 2] as const).map((player) => {
               const name = player === 1 ? p1Name : p2Name;

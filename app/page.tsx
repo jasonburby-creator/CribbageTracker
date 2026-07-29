@@ -6,15 +6,46 @@ import { supabase } from "@/lib/supabase";
 import NewTripForm from "@/components/NewTripForm";
 import HeadToHeadTally from "@/components/HeadToHeadTally";
 import PullToRefresh from "@/components/PullToRefresh";
+import ClaimPlayer from "@/components/ClaimPlayer";
+import { useAuth } from "@/components/AuthProvider";
 import { computeHeadToHeads } from "@/lib/scoring";
 import type { HeadToHead } from "@/lib/scoring";
-import type { Trip } from "@/lib/types";
+import type { Player, Trip } from "@/lib/types";
 
 export default function HomePage() {
+  const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [heads, setHeads] = useState<HeadToHead[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [myPlayer, setMyPlayer] = useState<Player | null>(null);
+  const [myPlayerChecked, setMyPlayerChecked] = useState(false);
+  const [showAllTrips, setShowAllTrips] = useState(false);
+
+  // Find (if any) the player row linked to the signed-in user's email.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user?.email) {
+      setMyPlayer(null);
+      setMyPlayerChecked(true);
+      return;
+    }
+    setMyPlayerChecked(false);
+    supabase
+      .from("players")
+      .select("id, name, email, created_at")
+      .eq("email", user.email.toLowerCase())
+      .maybeSingle()
+      .then(({ data }) => {
+        setMyPlayer((data as Player) ?? null);
+        setMyPlayerChecked(true);
+      });
+  }, [user, authLoading]);
+
+  const visibleTrips =
+    myPlayer && !showAllTrips
+      ? trips.filter((t) => t.player1_id === myPlayer.id || t.player2_id === myPlayer.id)
+      : trips;
 
   const loadHome = useCallback(async () => {
     // Active trips for the list, plus every trip + completed game for the
@@ -22,12 +53,16 @@ export default function HomePage() {
     const [activeRes, allTripsRes, gamesRes] = await Promise.all([
       supabase
         .from("trips")
-        .select("*, player1:player1_id(*), player2:player2_id(*)")
+        .select(
+          "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+        )
         .eq("status", "active")
         .order("created_at", { ascending: false }),
       supabase
         .from("trips")
-        .select("id, player1_id, player2_id, player1:player1_id(*), player2:player2_id(*)"),
+        .select(
+          "id, player1_id, player2_id, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+        ),
       supabase
         .from("games")
         .select(
@@ -59,13 +94,48 @@ export default function HomePage() {
         <h1 className="font-display italic text-4xl text-track">
           Cribbage Trips
         </h1>
+        {!authLoading && (
+          <p className="mt-3 text-xs text-brass-light/70">
+            {user ? (
+              <>
+                Signed in as {user.user_metadata?.full_name ?? user.email}
+                {" · "}
+                <button onClick={signOut} className="underline underline-offset-4">
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <button onClick={signInWithGoogle} className="underline underline-offset-4">
+                Sign in with Google
+              </button>
+            )}
+          </p>
+        )}
       </header>
+
+      {user && myPlayerChecked && !myPlayer && !showForm && (
+        <ClaimPlayer onClaimed={setMyPlayer} />
+      )}
 
       {!loading && !showForm && <HeadToHeadTally heads={heads} />}
 
-      {!loading && trips.length > 0 && !showForm && (
+      {!loading && myPlayer && trips.length > 0 && !showForm && (
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs uppercase tracking-widest text-brass-light/60">
+            {showAllTrips ? "All active trips" : "Your trips"}
+          </p>
+          <button
+            onClick={() => setShowAllTrips((v) => !v)}
+            className="text-xs text-brass-light/70 underline underline-offset-4"
+          >
+            {showAllTrips ? "Show just mine" : "Show all trips"}
+          </button>
+        </div>
+      )}
+
+      {!loading && visibleTrips.length > 0 && !showForm && (
         <div className="space-y-3 mb-8">
-          {trips.map((trip) => (
+          {visibleTrips.map((trip) => (
             <Link
               key={trip.id}
               href={`/trip/${trip.id}`}
@@ -87,9 +157,11 @@ export default function HomePage() {
         </div>
       )}
 
-      {!loading && trips.length === 0 && !showForm && (
+      {!loading && visibleTrips.length === 0 && !showForm && (
         <p className="text-center text-track/50 text-sm mb-8">
-          No active trip yet. Start one below.
+          {trips.length > 0
+            ? "None of your trips are active right now."
+            : "No active trip yet. Start one below."}
         </p>
       )}
 

@@ -1,4 +1,7 @@
 import { supabase } from "@/lib/supabase";
+import { readGpsFromJpeg } from "@/lib/exifGps";
+import { buildGpsExifSegment, injectExifSegment } from "@/lib/exifWrite";
+import type { Coords } from "@/lib/geo";
 
 // Client-side image handling shared by live games and manually-logged games:
 // compress a selected photo well under budget, then upload it to the game's
@@ -70,14 +73,28 @@ export async function compressImage(file: File): Promise<Blob> {
   return lastBlob as Blob;
 }
 
+export type UploadedPhoto = {
+  url: string;
+  // GPS pulled from the original file's EXIF, if it had any. Read before
+  // compression, since re-drawing onto a canvas strips all EXIF data.
+  exifCoords: Coords | null;
+};
+
 // Compresses and uploads a photo for a game, returning its public URL.
-export async function uploadGamePhoto(gameId: string, file: File): Promise<string> {
-  const compressed = await compressImage(file);
+export async function uploadGamePhoto(
+  gameId: string,
+  file: File
+): Promise<UploadedPhoto> {
+  const exifCoords = await readGpsFromJpeg(file);
+  let compressed = await compressImage(file);
+  if (exifCoords) {
+    compressed = await injectExifSegment(compressed, buildGpsExifSegment(exifCoords));
+  }
   const path = `${gameId}.jpg`;
   const { error: uploadError } = await supabase.storage
     .from("game-photos")
     .upload(path, compressed, { upsert: true, contentType: "image/jpeg" });
   if (uploadError) throw uploadError;
   const { data } = supabase.storage.from("game-photos").getPublicUrl(path);
-  return `${data.publicUrl}?t=${Date.now()}`;
+  return { url: `${data.publicUrl}?t=${Date.now()}`, exifCoords };
 }

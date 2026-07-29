@@ -9,17 +9,31 @@ import TripReview from "@/components/TripReview";
 import PhotoThumb from "@/components/PhotoThumb";
 import PullToRefresh from "@/components/PullToRefresh";
 import { formatCents, sortGamesByPlayedDesc } from "@/lib/scoring";
+import { canEditTrip } from "@/lib/permissions";
+import { useAuth } from "@/components/AuthProvider";
 import type { Game, Trip } from "@/lib/types";
 
 export default function ArchivedTripPage() {
   const params = useParams();
   const router = useRouter();
   const tripId = params.id as string;
+  const { user } = useAuth();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [canEdit, setCanEdit] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    canEditTrip(tripId).then((ok) => {
+      if (alive) setCanEdit(ok);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tripId, user]);
 
   async function deleteTrip() {
     if (
@@ -47,7 +61,9 @@ export default function ArchivedTripPage() {
   const load = useCallback(async () => {
     const { data: tripData } = await supabase
       .from("trips")
-      .select("*, player1:player1_id(*), player2:player2_id(*)")
+      .select(
+        "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+      )
       .eq("id", tripId)
       .single();
     setTrip(tripData as unknown as Trip);
@@ -155,13 +171,15 @@ export default function ArchivedTripPage() {
         </div>
       )}
 
-      <button
-        onClick={deleteTrip}
-        disabled={deleting}
-        className="w-full mt-8 border border-skunk/50 text-skunk rounded-lg py-2.5 text-sm disabled:opacity-40"
-      >
-        {deleting ? "Deleting…" : "Delete trip"}
-      </button>
+      {canEdit && (
+        <button
+          onClick={deleteTrip}
+          disabled={deleting}
+          className="w-full mt-8 border border-skunk/50 text-skunk rounded-lg py-2.5 text-sm disabled:opacity-40"
+        >
+          {deleting ? "Deleting…" : "Delete trip"}
+        </button>
+      )}
     </main>
     </PullToRefresh>
   );

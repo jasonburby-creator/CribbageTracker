@@ -13,7 +13,9 @@ export default function ArchivePage() {
   const loadTrips = useCallback(async () => {
     const { data } = await supabase
       .from("trips")
-      .select("*, player1:player1_id(*), player2:player2_id(*)")
+      .select(
+        "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+      )
       .eq("status", "archived")
       .order("ended_at", { ascending: false });
     setTrips((data as unknown as Trip[]) ?? []);

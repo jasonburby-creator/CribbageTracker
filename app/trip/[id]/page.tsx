@@ -20,16 +20,22 @@ import {
   WINNING_SCORE,
 } from "@/lib/scoring";
 import { uploadGamePhoto } from "@/lib/photo";
+import { canEditTrip } from "@/lib/permissions";
+import { useAuth } from "@/components/AuthProvider";
 import type { Game, Trip } from "@/lib/types";
 
 export default function TripPage() {
   const params = useParams();
   const router = useRouter();
   const tripId = params.id as string;
+  const { user, signInWithGoogle } = useAuth();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
+  // Optimistic until the RPC resolves, so the UI doesn't flash a "can't edit"
+  // state for the common case (a tied player who's signed in).
+  const [canEdit, setCanEdit] = useState(true);
   const [ending, setEnding] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showNewGameForm, setShowNewGameForm] = useState(false);
@@ -44,7 +50,9 @@ export default function TripPage() {
   async function loadAll() {
     const { data: tripData } = await supabase
       .from("trips")
-      .select("*, player1:player1_id(*), player2:player2_id(*)")
+      .select(
+        "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+      )
       .eq("id", tripId)
       .single();
     setTrip(tripData as unknown as Trip);
@@ -62,6 +70,17 @@ export default function TripPage() {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
+
+  // Re-check whenever the signed-in user changes (sign in/out/switch account).
+  useEffect(() => {
+    let alive = true;
+    canEditTrip(tripId).then((ok) => {
+      if (alive) setCanEdit(ok);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tripId, user]);
 
   const activeGame = games.find((g) => g.status === "in_progress") ?? null;
   const completedGames = games.filter((g) => g.status === "completed");
@@ -145,12 +164,25 @@ export default function TripPage() {
 
     // Resolve the photo after the row exists (upload keys off the game id).
     let photoUrl = saved.photo_url;
+    let exifCoords: { latitude: number; longitude: number } | null = null;
     if (photo.remove) photoUrl = null;
-    if (photo.file) photoUrl = await uploadGamePhoto(saved.id, photo.file);
-    if (photoUrl !== saved.photo_url) {
+    if (photo.file) {
+      const uploaded = await uploadGamePhoto(saved.id, photo.file);
+      photoUrl = uploaded.url;
+      exifCoords = uploaded.exifCoords;
+    }
+    if (photoUrl !== saved.photo_url || exifCoords) {
+      const patch: Record<string, unknown> = { photo_url: photoUrl };
+      // This form never captures live GPS, so a fresh photo's own EXIF fix is
+      // the only automatic source — but don't clobber a location this game
+      // already has (e.g. from a live-scored game that got edited afterward).
+      if (exifCoords && saved.latitude == null && saved.longitude == null) {
+        patch.latitude = exifCoords.latitude;
+        patch.longitude = exifCoords.longitude;
+      }
       const { data } = await supabase
         .from("games")
-        .update({ photo_url: photoUrl })
+        .update(patch)
         .eq("id", saved.id)
         .select()
         .single();
@@ -172,9 +204,14 @@ export default function TripPage() {
   async function deletePastGame() {
     if (!editingGame) return;
     const id = editingGame.id;
+    // Remove the photo before the row — once storage permissions resolve a
+    // game's trip through its own games row (see supabase-schema.sql), doing
+    // this after the row is gone would leave the photo orphaned.
+    if (editingGame.photo_url) {
+      await supabase.storage.from("game-photos").remove([`${id}.jpg`]);
+    }
     const { error } = await supabase.from("games").delete().eq("id", id);
     if (error) throw error;
-    supabase.storage.from("game-photos").remove([`${id}.jpg`]);
     setGames((prev) => prev.filter((x) => x.id !== id));
     closePastGameForm();
   }
@@ -241,10 +278,26 @@ export default function TripPage() {
         </p>
       </header>
 
+      {!canEdit && (
+        <div className="rounded-xl border border-brass/30 bg-walnut-light/10 p-4 text-center text-sm text-track/60 mb-4">
+          Sign in as {trip.player1?.name} or {trip.player2?.name} to score or
+          edit this trip.
+          {!user && (
+            <button
+              onClick={signInWithGoogle}
+              className="block mx-auto mt-2 underline underline-offset-4 text-brass-light"
+            >
+              Sign in with Google
+            </button>
+          )}
+        </div>
+      )}
+
       {boardGame ? (
         <GameLive
           trip={trip}
           game={boardGame}
+          canEdit={canEdit}
           onGameChange={handleGameChange}
           onNextGame={
             reviewGame
@@ -281,7 +334,7 @@ export default function TripPage() {
           onSubmit={submitPastGame}
           onCancel={closePastGameForm}
         />
-      ) : (
+      ) : canEdit ? (
         <div className="space-y-2">
           <button
             onClick={() => setShowNewGameForm(true)}
@@ -299,7 +352,7 @@ export default function TripPage() {
             Log a game already played
           </button>
         </div>
-      )}
+      ) : null}
 
       <div className="mt-8">
         <TripSummary trip={trip} games={games} />
@@ -373,16 +426,18 @@ export default function TripPage() {
                       )}
                       <div className="text-right">
                         <span className="font-score block">{formatCents(g.payout_cents ?? 0)}</span>
-                        <button
-                          onClick={() => {
-                            setShowLogPastGame(false);
-                            setShowNewGameForm(false);
-                            setEditingGame(g);
-                          }}
-                          className="text-xs text-brass-light/70 underline underline-offset-2"
-                        >
-                          Edit
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => {
+                              setShowLogPastGame(false);
+                              setShowNewGameForm(false);
+                              setEditingGame(g);
+                            }}
+                            className="text-xs text-brass-light/70 underline underline-offset-2"
+                          >
+                            Edit
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -393,7 +448,7 @@ export default function TripPage() {
         </div>
       )}
 
-      {!activeGame && !showEditTrip && (
+      {!activeGame && !showEditTrip && canEdit && (
         <div className="mt-8 space-y-2">
           <button
             onClick={endTrip}

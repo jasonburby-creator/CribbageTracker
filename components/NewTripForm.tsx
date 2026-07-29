@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { Player, Trip } from "@/lib/types";
+import type { Trip } from "@/lib/types";
+
+// Just enough of a player to match/create by name — deliberately not the
+// full Player type (which includes `email`): this form loads the player list
+// for anyone, including signed-out visitors starting a new trip, and the
+// `email` column isn't selectable by an anonymous request (see
+// supabase-phase-b-enforce.sql).
+type PlayerOption = { id: string; name: string };
 
 // Doubles as the "new trip" and "edit trip" form. Pass an existing `trip` to
 // pre-fill the fields and switch into edit mode; `onSaved` fires with the
@@ -17,7 +24,7 @@ export default function NewTripForm({
 } = {}) {
   const isEditing = !!trip;
   const router = useRouter();
-  const [players, setPlayers] = useState<Player[]>([]);
+  const [players, setPlayers] = useState<PlayerOption[]>([]);
   const [name, setName] = useState(trip?.name ?? "");
   const [boardName, setBoardName] = useState(trip?.board_name ?? "");
   const [boardTheme, setBoardTheme] = useState(trip?.board_theme ?? "");
@@ -35,7 +42,7 @@ export default function NewTripForm({
   useEffect(() => {
     supabase
       .from("players")
-      .select("*")
+      .select("id, name")
       .order("name")
       .then(({ data }) => setPlayers(data ?? []));
   }, []);
@@ -51,7 +58,7 @@ export default function NewTripForm({
     const { data, error: insertError } = await supabase
       .from("players")
       .insert({ name: trimmed })
-      .select()
+      .select("id, name")
       .single();
     if (data) return data.id;
 
@@ -59,7 +66,7 @@ export default function NewTripForm({
     // fall back to fetching it.
     const { data: fetched } = await supabase
       .from("players")
-      .select("*")
+      .select("id, name")
       .ilike("name", trimmed)
       .single();
     if (fetched) return fetched.id;
@@ -112,7 +119,9 @@ export default function NewTripForm({
           .from("trips")
           .update(values)
           .eq("id", trip.id)
-          .select("*, player1:player1_id(*), player2:player2_id(*)")
+          .select(
+            "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+          )
           .single();
         if (updateError || !data) {
           setError(updateError?.message ?? "Something went wrong.");

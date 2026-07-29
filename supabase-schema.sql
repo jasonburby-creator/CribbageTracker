@@ -71,6 +71,64 @@ end $$;
 create index if not exists idx_games_trip_id on games(trip_id);
 create index if not exists idx_trips_status on trips(status);
 
+-- Google login (Phase A — additive only, nothing is restricted by this
+-- section). Links a player to the Google account that's allowed to score and
+-- edit trips they're part of. Nullable: most rows won't have one until that
+-- person signs in and claims it (see the app's "claim your player" flow).
+alter table players add column if not exists email text unique;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'players_email_lowercase'
+  ) then
+    alter table players add constraint players_email_lowercase
+      check (email = lower(email));
+  end if;
+end $$;
+
+-- Returns whether the currently-authenticated request's Google email matches
+-- either player on the given trip. security definer so it can read
+-- players.email regardless of the caller's own column privileges (see the
+-- Phase B column grants below) — the check itself still only ever returns a
+-- boolean, so callers (including anonymous ones, via RPC) never learn any
+-- player's actual email address.
+create or replace function public.is_tied_to_trip(p_trip_id uuid)
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from trips t
+    join players p1 on p1.id = t.player1_id
+    join players p2 on p2.id = t.player2_id
+    where t.id = p_trip_id
+      and (p1.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+           or p2.email = lower(coalesce(auth.jwt() ->> 'email', '')))
+  );
+$$;
+grant execute on function public.is_tied_to_trip(uuid) to anon, authenticated;
+
+-- Same idea for a game photo's storage object name (stored as `${gameId}.jpg`).
+create or replace function public.is_tied_to_game_photo(object_name text)
+returns boolean
+language plpgsql stable security definer
+set search_path = public
+as $$
+declare
+  gid uuid;
+begin
+  begin
+    gid := split_part(object_name, '.', 1)::uuid;
+  exception when others then
+    return false;
+  end;
+  return exists (
+    select 1 from games g where g.id = gid and public.is_tied_to_trip(g.trip_id)
+  );
+end;
+$$;
+grant execute on function public.is_tied_to_game_photo(text) to anon, authenticated;
+
 -- Enable realtime updates for live multi-device score tracking.
 -- Guarded because Supabase sometimes auto-enrolls new tables in this
 -- publication, which makes a plain "alter publication ... add table" error

@@ -2,12 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { sortGamesByPlayedDesc } from "@/lib/scoring";
+import { forwardGeocode } from "@/lib/geocode";
+import type { Coords } from "@/lib/geo";
 import type { Game, Trip } from "@/lib/types";
 
 // Full-screen trip review: an auto-advancing slideshow of the trip's photos,
 // with an optional map pinning the games that captured a location. The map
 // (Leaflet + OpenStreetMap tiles) loads on demand and is online-only, which is
 // fine for a post-trip recap.
+//
+// Pins come from two sources: games with a real lat/long fix (from live GPS
+// or the photo's EXIF data), shown as solid pins, and games that only have a
+// free-text `location` — geocoded on the fly into an approximate pin, shown
+// hollow/dashed so it's clear it's a best guess, not where the phone actually was.
 
 const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
 const LEAFLET_JS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
@@ -72,10 +79,49 @@ export default function TripReview({
 
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
+  const [approx, setApprox] = useState<Record<string, Coords>>({});
   const mapRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<any[]>([]);
   const indexRef = useRef(0);
   indexRef.current = index;
+
+  // Games with a photo but no real fix, that at least have a typed location
+  // to geocode as a fallback.
+  const geocodable = photos.filter(
+    (g) => (g.latitude == null || g.longitude == null) && g.location
+  );
+  const approxPinned = photos.filter((g) => approx[g.id]);
+  const pinned = [
+    ...located.map((g) => ({ id: g.id, lat: g.latitude!, lon: g.longitude!, approx: false })),
+    ...approxPinned.map((g) => ({
+      id: g.id,
+      lat: approx[g.id].latitude,
+      lon: approx[g.id].longitude,
+      approx: true,
+    })),
+  ];
+
+  // Best-effort geocode of any games missing a real GPS fix. Runs once per
+  // mount; results are cached (see lib/geocode.ts) so repeat visits are fast.
+  useEffect(() => {
+    if (geocodable.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const results: Record<string, Coords> = {};
+      for (const g of geocodable) {
+        if (cancelled) return;
+        const coords = await forwardGeocode(g.location!);
+        if (coords) results[g.id] = coords;
+      }
+      if (!cancelled && Object.keys(results).length > 0) {
+        setApprox(results);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos.length]);
 
   // Auto-advance.
   useEffect(() => {
@@ -99,9 +145,9 @@ export default function TripReview({
     return () => window.removeEventListener("keydown", onKey);
   }, [photos.length, onClose]);
 
-  // Build the map once photos with coordinates exist.
+  // Build the map once photos with real or geocoded coordinates exist.
   useEffect(() => {
-    if (located.length === 0 || !mapRef.current) return;
+    if (pinned.length === 0 || !mapRef.current) return;
     let map: any;
     let cancelled = false;
     loadLeaflet()
@@ -113,24 +159,25 @@ export default function TripReview({
           attribution: "© OpenStreetMap",
         }).addTo(map);
         const pts: [number, number][] = [];
-        markersRef.current = located.map((g) => {
-          const latlng: [number, number] = [g.latitude!, g.longitude!];
+        markersRef.current = pinned.map((p) => {
+          const latlng: [number, number] = [p.lat, p.lon];
           pts.push(latlng);
           const m = L.circleMarker(latlng, {
-            radius: 8,
+            radius: p.approx ? 7 : 8,
             color: ACCENT,
             weight: 2,
             fillColor: ACCENT,
-            fillOpacity: 0.7,
+            fillOpacity: p.approx ? 0.35 : 0.7,
+            dashArray: p.approx ? "3,3" : undefined,
           }).addTo(map);
           m.on("click", () => {
-            const i = photos.findIndex((p) => p.id === g.id);
+            const i = photos.findIndex((ph) => ph.id === p.id);
             if (i >= 0) {
               setPlaying(false);
               setIndex(i);
             }
           });
-          return { marker: m, gameId: g.id };
+          return { marker: m, gameId: p.id, approx: p.approx };
         });
         if (pts.length === 1) map.setView(pts[0], 13);
         else map.fitBounds(pts, { padding: [30, 30] });
@@ -142,17 +189,17 @@ export default function TripReview({
       markersRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [located.length]);
+  }, [pinned.length]);
 
   // Recolor pins as the slideshow moves.
   useEffect(() => {
     const activeId = photos[index]?.id;
-    for (const { marker, gameId } of markersRef.current) {
+    for (const { marker, gameId, approx: isApprox } of markersRef.current) {
       const active = gameId === activeId;
       marker.setStyle({
         color: active ? ACCENT2 : ACCENT,
         fillColor: active ? ACCENT2 : ACCENT,
-        radius: active ? 11 : 8,
+        radius: active ? 11 : isApprox ? 7 : 8,
       });
     }
   }, [index, photos]);
@@ -235,7 +282,7 @@ export default function TripReview({
               </span>
             </div>
 
-            {located.length > 0 && (
+            {pinned.length > 0 && (
               <div className="mt-5">
                 <p className="text-xs uppercase tracking-widest text-brass-light/60 mb-2">
                   Where you played
@@ -246,6 +293,8 @@ export default function TripReview({
                 />
                 <p className="text-[11px] text-track/40 mt-1">
                   Tap a pin to jump to that game&rsquo;s photo.
+                  {approxPinned.length > 0 &&
+                    " Hollow pins are estimated from the game's location text, not an exact fix."}
                 </p>
               </div>
             )}

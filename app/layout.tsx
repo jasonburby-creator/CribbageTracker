@@ -3,6 +3,7 @@ import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import AuthProvider from "@/components/AuthProvider";
 
 // Runs before paint to avoid a flash of the wrong theme: use the saved
 // preference if set, otherwise pick by time of day (dark 7pm–7am).
@@ -47,7 +48,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
         <ServiceWorkerRegister />
         <ThemeToggle />
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

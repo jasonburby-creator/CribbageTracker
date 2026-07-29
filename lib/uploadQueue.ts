@@ -101,11 +101,17 @@ export async function flushQueue(): Promise<number> {
     for (const rec of records) {
       try {
         const file = new File([rec.blob], rec.name, { type: rec.type });
-        const photoUrl = await uploadGamePhoto(rec.gameId, file);
+        const { url: photoUrl, exifCoords } = await uploadGamePhoto(rec.gameId, file);
+        // The live-GPS fix captured when the photo was picked wins; otherwise
+        // fall back to the photo's own EXIF fix.
+        const pin =
+          rec.latitude != null && rec.longitude != null
+            ? { latitude: rec.latitude, longitude: rec.longitude }
+            : exifCoords;
         const patch: Record<string, unknown> = { photo_url: photoUrl };
-        if (rec.latitude != null && rec.longitude != null) {
-          patch.latitude = rec.latitude;
-          patch.longitude = rec.longitude;
+        if (pin) {
+          patch.latitude = pin.latitude;
+          patch.longitude = pin.longitude;
         }
         const { error } = await supabase
           .from("games")

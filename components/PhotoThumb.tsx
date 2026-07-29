@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 // A photo thumbnail that opens a full-screen lightbox when tapped/clicked.
 // `className` styles the inline thumbnail; the enlarged view is fixed-size.
@@ -39,41 +40,47 @@ export default function PhotoThumb({
         <img src={src} alt={alt} className={className} />
       </button>
 
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          // Tapping anywhere (image or backdrop) closes it. h-screen is the
-          // fallback; the inline 100dvh uses the *visible* viewport so the image
-          // isn't cut off behind mobile browser bars. No `bottom`/inset-0
-          // constraint, which would override the height.
-          className="fixed left-0 right-0 top-0 z-50 h-screen flex items-center justify-center bg-black/90 p-3"
-          style={{ height: "100dvh" }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt={alt}
-            className="max-h-full max-w-full rounded-lg object-contain shadow-2xl pointer-events-none"
-          />
-          <button
-            type="button"
+      {open &&
+        createPortal(
+          <div
             onClick={() => setOpen(false)}
-            aria-label="Close photo"
-            className="absolute right-4 flex items-center justify-center h-11 w-11 rounded-full bg-black/60 text-white text-3xl leading-none border border-white/40 hover:bg-black/80"
-            style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+            role="dialog"
+            aria-modal="true"
+            // Tapping anywhere (image or backdrop) closes it. h-screen is the
+            // fallback; the inline 100dvh uses the *visible* viewport so the image
+            // isn't cut off behind mobile browser bars. No `bottom`/inset-0
+            // constraint, which would override the height.
+            // Portaled to document.body so it's fixed to the actual viewport —
+            // rendering it inline would put it inside PullToRefresh's transformed
+            // wrapper, which creates its own containing block for `fixed` and
+            // pins the lightbox to the top of the page instead of the screen.
+            className="fixed left-0 right-0 top-0 z-50 h-screen flex items-center justify-center bg-black/90 p-3"
+            style={{ height: "100dvh" }}
           >
-            ×
-          </button>
-          <p
-            className="absolute left-0 right-0 text-center text-white/70 text-xs"
-            style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
-          >
-            Tap anywhere to close
-          </p>
-        </div>
-      )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt={alt}
+              className="max-h-full max-w-full rounded-lg object-contain shadow-2xl pointer-events-none"
+            />
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close photo"
+              className="absolute right-4 flex items-center justify-center h-11 w-11 rounded-full bg-black/60 text-white text-3xl leading-none border border-white/40 hover:bg-black/80"
+              style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+            >
+              ×
+            </button>
+            <p
+              className="absolute left-0 right-0 text-center text-white/70 text-xs"
+              style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
+            >
+              Tap anywhere to close
+            </p>
+          </div>,
+          document.body
+        )}
     </>
   );
 }

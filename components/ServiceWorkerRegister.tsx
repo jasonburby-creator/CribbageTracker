@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { flushQueue } from "@/lib/uploadQueue";
 import { flushGameSnapshots } from "@/lib/gameSync";
+import { supabase } from "@/lib/supabase";
 
 // Registers the offline service worker and drains anything queued while offline
 // (pending score updates and photo uploads) — once on load and again whenever
@@ -12,7 +13,11 @@ export default function ServiceWorkerRegister() {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
-    const flush = () => {
+    const flush = async () => {
+      // Force a token refresh if the session's access token expired while
+      // offline, so queued writes land as the right signed-in player instead
+      // of failing on an auth technicality.
+      await supabase.auth.getSession().catch(() => {});
       flushGameSnapshots().catch(() => {});
       flushQueue().catch(() => {});
     };

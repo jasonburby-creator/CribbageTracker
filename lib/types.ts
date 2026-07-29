@@ -1,6 +1,7 @@
 export type Player = {
   id: string;
   name: string;
+  email: string | null;
   created_at: string;
 };
 
