@@ -193,7 +193,15 @@ export default function HomePage() {
         </button>
       )}
 
-      <div className="text-center mt-10">
+      <div className="text-center mt-10 space-x-3">
+        <Link href="/about" className="text-sm text-brass-light/70 underline underline-offset-4">
+          How it works
+        </Link>
+        <span className="text-track/30">·</span>
+        <Link href="/rules" className="text-sm text-brass-light/70 underline underline-offset-4">
+          Cribbage rules
+        </Link>
+        <span className="text-track/30">·</span>
         <Link href="/archive" className="text-sm text-brass-light/70 underline underline-offset-4">
           View past trips
         </Link>
