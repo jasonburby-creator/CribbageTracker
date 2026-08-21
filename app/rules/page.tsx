@@ -6,6 +6,43 @@ export const metadata: Metadata = {
   description: "How to play two-player cribbage, and how Skunk Life scores it.",
 };
 
+type Suit = "♠" | "♥" | "♦" | "♣";
+
+// A small stand-in for a real playing card — fixed cream/ivory face regardless
+// of the app's light/dark theme, same as a photo of an actual card would be.
+function Card({ rank, suit }: { rank: string; suit: Suit }) {
+  const red = suit === "♥" || suit === "♦";
+  return (
+    <div
+      className={`w-11 h-14 shrink-0 rounded-md border border-black/15 bg-[#F7F3E9] flex flex-col items-center justify-center leading-none ${
+        red ? "text-skunk" : "text-ink"
+      }`}
+    >
+      <span className="font-score text-sm">{rank}</span>
+      <span className="text-lg mt-0.5">{suit}</span>
+    </div>
+  );
+}
+
+function CardExample({
+  cards,
+  label,
+}: {
+  cards: { rank: string; suit: Suit }[];
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex gap-1.5">
+        {cards.map((c, i) => (
+          <Card key={i} rank={c.rank} suit={c.suit} />
+        ))}
+      </div>
+      <p className="text-sm text-track/70">{label}</p>
+    </div>
+  );
+}
+
 export default function RulesPage() {
   return (
     <main className="max-w-md mx-auto px-5 py-10">
@@ -22,6 +59,15 @@ export default function RulesPage() {
         </h1>
         <p className="text-xs text-track/50 mt-2">Two-player, straight through</p>
       </header>
+
+      <a
+        href="https://www.youtube.com/watch?v=YrUYQ-AhLpI"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block text-center border border-brass/40 text-brass-light rounded-lg px-5 py-3 text-sm mb-8"
+      >
+        ▶ Prefer watching? Full how-to-play video on YouTube
+      </a>
 
       <div className="space-y-8 text-base text-track/80 leading-relaxed">
         <section>
@@ -94,6 +140,60 @@ export default function RulesPage() {
             </li>
             <li>Last card played when neither can go further — 1 point</li>
           </ul>
+
+          <div className="mt-4 rounded-lg border border-brass/25 bg-walnut-light/10 p-3 space-y-3">
+            <p className="text-xs uppercase tracking-widest text-brass-light/60">
+              Fifteens, shown
+            </p>
+            <p className="text-xs text-track/50 -mt-2">
+              Face cards always count as 10 — any cards adding up to 15
+              score 2 points, no matter how many cards it takes.
+            </p>
+            <CardExample
+              cards={[
+                { rank: "9", suit: "♠" },
+                { rank: "6", suit: "♥" },
+              ]}
+              label="9 + 6 = 15 → 2 points"
+            />
+            <CardExample
+              cards={[
+                { rank: "K", suit: "♦" },
+                { rank: "5", suit: "♣" },
+              ]}
+              label="K (=10) + 5 = 15 → 2 points"
+            />
+            <CardExample
+              cards={[
+                { rank: "8", suit: "♥" },
+                { rank: "4", suit: "♠" },
+                { rank: "3", suit: "♦" },
+              ]}
+              label="8 + 4 + 3 = 15 → 2 points"
+            />
+          </div>
+
+          <div className="mt-4 rounded-lg border border-brass/25 bg-walnut-light/10 p-3 space-y-3">
+            <p className="text-xs uppercase tracking-widest text-brass-light/60">
+              Runs count in any order
+            </p>
+            <CardExample
+              cards={[
+                { rank: "6", suit: "♠" },
+                { rank: "4", suit: "♥" },
+                { rank: "5", suit: "♦" },
+              ]}
+              label="Played in this order…"
+            />
+            <CardExample
+              cards={[
+                { rank: "4", suit: "♥" },
+                { rank: "5", suit: "♦" },
+                { rank: "6", suit: "♠" },
+              ]}
+              label="…is still a run of 3 → 3 points"
+            />
+          </div>
         </section>
 
         <section>
