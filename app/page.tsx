@@ -47,6 +47,14 @@ export default function HomePage() {
       ? trips.filter((t) => t.player1_id === myPlayer.id || t.player2_id === myPlayer.id)
       : trips;
 
+  // Once signed in and linked, only show head-to-head cards involving you —
+  // one per opponent you've actually played. Signed out (or signed in but
+  // not yet linked to a player) still sees everything, matching the rest of
+  // the app staying open to anonymous visitors.
+  const visibleHeads = myPlayer
+    ? heads.filter((h) => h.players.some((p) => p.playerId === myPlayer.id))
+    : heads;
+
   const loadHome = useCallback(async () => {
     // Active trips for the list, plus every trip + completed game for the
     // all-time head-to-head tally.
@@ -117,7 +125,7 @@ export default function HomePage() {
         <ClaimPlayer onClaimed={setMyPlayer} />
       )}
 
-      {!loading && !showForm && <HeadToHeadTally heads={heads} />}
+      {!loading && !showForm && <HeadToHeadTally heads={visibleHeads} />}
 
       {!loading && myPlayer && trips.length > 0 && !showForm && (
         <div className="flex items-center justify-between mb-2">
