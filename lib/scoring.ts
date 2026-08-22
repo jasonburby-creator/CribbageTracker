@@ -130,6 +130,7 @@ export type HeadToHead = {
 
 type TallyTrip = {
   id: string;
+  name: string;
   player1_id: string;
   player2_id: string;
   player1?: { name: string } | null;
@@ -252,6 +253,202 @@ export function computeHeadToHeads(
       ] as [PlayerTally, PlayerTally],
     }))
     .sort((a, b) => b.gamesPlayed - a.gamesPlayed);
+}
+
+export type MarginRecord = {
+  winnerName: string;
+  loserName: string;
+  winnerScore: number;
+  loserScore: number;
+  margin: number;
+  tripName: string;
+  date: string | null;
+};
+
+export type LongestGameRecord = {
+  winnerName: string;
+  loserName: string;
+  handsPlayed: number;
+  tripName: string;
+  date: string | null;
+};
+
+export type SkunkiestTripRecord = {
+  playerName: string;
+  opponentName: string;
+  tripName: string;
+  skunkCount: number;
+};
+
+export type StreakRecord = {
+  key: string;
+  playerName: string;
+  opponentName: string;
+  length: number;
+  lastPlayedAt: string | null;
+};
+
+export type Records = {
+  biggestMargin: MarginRecord | null;
+  closestGame: MarginRecord | null;
+  longestGame: LongestGameRecord | null;
+  skunkiestTrip: SkunkiestTripRecord | null;
+  streaks: StreakRecord[];
+};
+
+/**
+ * All-time records and current per-pairing win streaks — same underlying
+ * data as computeHeadToHeads (same trip/game shapes, same canonical pairing
+ * key), just summarized differently. Callers should pass a `trips` array
+ * with demo trips already filtered out, same as for computeHeadToHeads.
+ */
+export function computeRecords(
+  trips: TallyTrip[],
+  games: (TallyGame & { completed_at?: string | null })[]
+): Records {
+  const tripById = new Map(trips.map((t) => [t.id, t]));
+
+  let biggestMargin: MarginRecord | null = null;
+  let closestGame: MarginRecord | null = null;
+  let longestGame: LongestGameRecord | null = null;
+
+  // trip_id -> winning playerId -> skunk/double-skunk wins delivered, for
+  // finding the single most lopsided trip.
+  const skunksByTrip = new Map<string, Map<string, number>>();
+
+  // canonical pair key -> that pairing's games in play order, for streaks.
+  const pairGames = new Map<
+    string,
+    {
+      order: string[];
+      names: Map<string, string>;
+      games: { winnerId: string; completed_at: string | null }[];
+    }
+  >();
+
+  for (const g of games) {
+    if (g.status !== "completed" || !g.winner_player) continue;
+    const trip = tripById.get(g.trip_id);
+    if (!trip) continue;
+
+    const p1 = { id: trip.player1_id, name: trip.player1?.name ?? "Player 1" };
+    const p2 = { id: trip.player2_id, name: trip.player2?.name ?? "Player 2" };
+    const winnerId = g.winner_player === 1 ? p1.id : p2.id;
+    const winnerName = g.winner_player === 1 ? p1.name : p2.name;
+    const loserName = g.winner_player === 1 ? p2.name : p1.name;
+    const date = g.completed_at ?? null;
+
+    const winnerScore = Math.min(
+      WINNING_SCORE,
+      Math.max(g.player1_score, g.player2_score)
+    );
+    const loserScore = Math.min(g.player1_score, g.player2_score);
+    const margin = winnerScore - loserScore;
+
+    if (!biggestMargin || margin > biggestMargin.margin) {
+      biggestMargin = {
+        winnerName,
+        loserName,
+        winnerScore,
+        loserScore,
+        margin,
+        tripName: trip.name,
+        date,
+      };
+    }
+    if (!closestGame || margin < closestGame.margin) {
+      closestGame = {
+        winnerName,
+        loserName,
+        winnerScore,
+        loserScore,
+        margin,
+        tripName: trip.name,
+        date,
+      };
+    }
+    if (
+      g.hands_played &&
+      g.hands_played > 0 &&
+      (!longestGame || g.hands_played > longestGame.handsPlayed)
+    ) {
+      longestGame = {
+        winnerName,
+        loserName,
+        handsPlayed: g.hands_played,
+        tripName: trip.name,
+        date,
+      };
+    }
+    if (g.is_skunk || g.is_double_skunk) {
+      let byPlayer = skunksByTrip.get(g.trip_id);
+      if (!byPlayer) {
+        byPlayer = new Map();
+        skunksByTrip.set(g.trip_id, byPlayer);
+      }
+      byPlayer.set(winnerId, (byPlayer.get(winnerId) ?? 0) + 1);
+    }
+
+    const order = [p1.id, p2.id].sort();
+    const key = order.join("|");
+    let bucket = pairGames.get(key);
+    if (!bucket) {
+      bucket = { order, names: new Map(), games: [] };
+      pairGames.set(key, bucket);
+    }
+    bucket.names.set(p1.id, p1.name);
+    bucket.names.set(p2.id, p2.name);
+    bucket.games.push({ winnerId, completed_at: date });
+  }
+
+  let skunkiestTrip: SkunkiestTripRecord | null = null;
+  for (const [tripId, byPlayer] of skunksByTrip) {
+    const trip = tripById.get(tripId);
+    if (!trip) continue;
+    for (const [playerId, count] of byPlayer) {
+      if (!skunkiestTrip || count > skunkiestTrip.skunkCount) {
+        const isP1 = playerId === trip.player1_id;
+        skunkiestTrip = {
+          playerName: isP1
+            ? trip.player1?.name ?? "Player 1"
+            : trip.player2?.name ?? "Player 2",
+          opponentName: isP1
+            ? trip.player2?.name ?? "Player 2"
+            : trip.player1?.name ?? "Player 1",
+          tripName: trip.name,
+          skunkCount: count,
+        };
+      }
+    }
+  }
+
+  // Sort each pairing's games newest-first, count consecutive wins by the
+  // most recent winner — a streak of 1 isn't worth surfacing.
+  const streaks: StreakRecord[] = [];
+  for (const [key, bucket] of pairGames) {
+    const sorted = [...bucket.games].sort((a, b) =>
+      (b.completed_at ?? "").localeCompare(a.completed_at ?? "")
+    );
+    if (sorted.length === 0) continue;
+    const currentWinner = sorted[0].winnerId;
+    let length = 0;
+    for (const g of sorted) {
+      if (g.winnerId !== currentWinner) break;
+      length += 1;
+    }
+    if (length < 2) continue;
+    const opponentId = bucket.order.find((id) => id !== currentWinner)!;
+    streaks.push({
+      key,
+      playerName: bucket.names.get(currentWinner) ?? "?",
+      opponentName: bucket.names.get(opponentId) ?? "?",
+      length,
+      lastPlayedAt: sorted[0].completed_at,
+    });
+  }
+  streaks.sort((a, b) => b.length - a.length);
+
+  return { biggestMargin, closestGame, longestGame, skunkiestTrip, streaks };
 }
 
 /**

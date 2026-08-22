@@ -20,8 +20,13 @@ create table if not exists trips (
   player2_id uuid not null references players(id),
   status text not null default 'active' check (status in ('active', 'archived')),
   created_at timestamptz not null default now(),
-  ended_at timestamptz
+  ended_at timestamptz,
+  -- A demo/practice trip still scores and works normally, but is excluded
+  -- from the all-time head-to-head tally so testing never mixes into real
+  -- players' stats.
+  is_demo boolean not null default false
 );
+alter table trips add column if not exists is_demo boolean not null default false;
 
 create table if not exists games (
   id uuid primary key default gen_random_uuid(),

@@ -17,6 +17,7 @@ export type Trip = {
   status: "active" | "archived";
   created_at: string;
   ended_at: string | null;
+  is_demo: boolean;
   // joined
   player1?: Player;
   player2?: Player;

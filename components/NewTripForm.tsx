@@ -36,6 +36,7 @@ export default function NewTripForm({
   );
   const [player1Name, setPlayer1Name] = useState(trip?.player1?.name ?? "");
   const [player2Name, setPlayer2Name] = useState(trip?.player2?.name ?? "");
+  const [isDemo, setIsDemo] = useState(trip?.is_demo ?? false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,6 +113,7 @@ export default function NewTripForm({
         per_point_cents: perPointCents,
         player1_id: player1Id,
         player2_id: player2Id,
+        is_demo: isDemo,
       };
 
       if (isEditing) {
@@ -251,6 +253,23 @@ export default function NewTripForm({
         Type a name you've used before, or a new one — either works, no extra
         step needed.
       </p>
+
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={isDemo}
+          onChange={(e) => setIsDemo(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-brass"
+        />
+        <span className="text-sm text-track">
+          <span className="block">This is a demo/practice trip</span>
+          <span className="block text-track/50 text-xs mt-0.5">
+            Scores and works normally, but stays out of the all-time
+            head-to-head tally — safe to use real players for testing.
+          </span>
+        </span>
+      </label>
+
       {error && <p className="text-skunk text-sm">{error}</p>}
       <button
         type="submit"

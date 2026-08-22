@@ -7,10 +7,15 @@ import NewTripForm from "@/components/NewTripForm";
 import HeadToHeadTally from "@/components/HeadToHeadTally";
 import PullToRefresh from "@/components/PullToRefresh";
 import ClaimPlayer from "@/components/ClaimPlayer";
+import InstallPrompt from "@/components/InstallPrompt";
 import { useAuth } from "@/components/AuthProvider";
 import { computeHeadToHeads } from "@/lib/scoring";
 import type { HeadToHead } from "@/lib/scoring";
+import { readCache, writeCache } from "@/lib/offlineCache";
 import type { Player, Trip } from "@/lib/types";
+
+const HOME_CACHE_KEY = "skunklife-home-cache-v1";
+type HomeCache = { trips: Trip[]; heads: HeadToHead[] };
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
@@ -18,6 +23,7 @@ export default function HomePage() {
   const [heads, setHeads] = useState<HeadToHead[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   const [myPlayer, setMyPlayer] = useState<Player | null>(null);
   const [myPlayerChecked, setMyPlayerChecked] = useState(false);
   const [showAllTrips, setShowAllTrips] = useState(false);
@@ -56,39 +62,66 @@ export default function HomePage() {
     : heads;
 
   const loadHome = useCallback(async () => {
-    // Active trips for the list, plus every trip + completed game for the
-    // all-time head-to-head tally.
-    const [activeRes, allTripsRes, gamesRes] = await Promise.all([
-      supabase
-        .from("trips")
-        .select(
-          "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
-        )
-        .eq("status", "active")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("trips")
-        .select(
-          "id, player1_id, player2_id, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
-        ),
-      supabase
-        .from("games")
-        .select(
-          "trip_id, status, winner_player, is_skunk, is_double_skunk, payout_cents, win_weight, player1_score, player2_score, hands_played"
-        )
-        .eq("status", "completed"),
-    ]);
-    setTrips((activeRes.data as unknown as Trip[]) ?? []);
-    setHeads(
-      computeHeadToHeads(
-        (allTripsRes.data as any[]) ?? [],
-        (gamesRes.data as any[]) ?? []
-      )
-    );
-    setLoading(false);
+    try {
+      // Active trips for the list, plus every trip + completed game for the
+      // all-time head-to-head tally.
+      const [activeRes, allTripsRes, gamesRes] = await Promise.all([
+        supabase
+          .from("trips")
+          .select(
+            "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+          )
+          .eq("status", "active")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("trips")
+          .select(
+            "id, is_demo, player1_id, player2_id, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+          ),
+        supabase
+          .from("games")
+          .select(
+            "trip_id, status, winner_player, is_skunk, is_double_skunk, payout_cents, win_weight, player1_score, player2_score, hands_played"
+          )
+          .eq("status", "completed"),
+      ]);
+      if (activeRes.error) throw activeRes.error;
+      if (allTripsRes.error) throw allTripsRes.error;
+      if (gamesRes.error) throw gamesRes.error;
+
+      const nextTrips = (activeRes.data as unknown as Trip[]) ?? [];
+      // Demo/practice trips still work normally on their own page, but never
+      // feed into the all-time head-to-head tally.
+      const realTrips = ((allTripsRes.data as any[]) ?? []).filter((t) => !t.is_demo);
+      const nextHeads = computeHeadToHeads(realTrips, (gamesRes.data as any[]) ?? []);
+
+      setTrips(nextTrips);
+      setHeads(nextHeads);
+      setOffline(false);
+      writeCache<HomeCache>(HOME_CACHE_KEY, { trips: nextTrips, heads: nextHeads });
+    } catch {
+      // Offline (or the request otherwise failed) — fall back to whatever we
+      // last successfully loaded rather than leaving the page blank.
+      const cached = readCache<HomeCache>(HOME_CACHE_KEY);
+      if (cached) {
+        setTrips(cached.trips);
+        setHeads(cached.heads);
+        setOffline(true);
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  // Show cached data immediately on first paint if we have it, so there's
+  // something real on screen before the network request even resolves.
   useEffect(() => {
+    const cached = readCache<HomeCache>(HOME_CACHE_KEY);
+    if (cached) {
+      setTrips(cached.trips);
+      setHeads(cached.heads);
+      setLoading(false);
+    }
     loadHome();
   }, [loadHome]);
 
@@ -121,6 +154,14 @@ export default function HomePage() {
         )}
       </header>
 
+      {offline && (
+        <p className="text-center text-xs rounded-lg py-1.5 mb-4 border border-brass/30 bg-brass/10 text-brass-light">
+          Offline — showing your last loaded trips.
+        </p>
+      )}
+
+      <InstallPrompt />
+
       {user && myPlayerChecked && !myPlayer && !showForm && (
         <ClaimPlayer onClaimed={setMyPlayer} />
       )}
@@ -151,8 +192,13 @@ export default function HomePage() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-display text-lg text-track">
+                  <p className="font-display text-lg text-track flex items-center gap-2">
                     {trip.name}
+                    {trip.is_demo && (
+                      <span className="text-[10px] uppercase tracking-widest border border-brass/40 text-brass-light/80 rounded px-1.5 py-0.5">
+                        Demo
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-brass-light/70">
                     {trip.player1?.name} vs {trip.player2?.name} · {trip.board_name}
@@ -200,6 +246,10 @@ export default function HomePage() {
         <span className="text-track/30">·</span>
         <Link href="/rules" className="text-sm text-brass-light/70 underline underline-offset-4">
           Cribbage rules
+        </Link>
+        <span className="text-track/30">·</span>
+        <Link href="/records" className="text-sm text-brass-light/70 underline underline-offset-4">
+          Records
         </Link>
         <span className="text-track/30">·</span>
         <Link href="/archive" className="text-sm text-brass-light/70 underline underline-offset-4">

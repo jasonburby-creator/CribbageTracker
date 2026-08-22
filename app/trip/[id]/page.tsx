@@ -22,17 +22,22 @@ import {
 import { uploadGamePhoto } from "@/lib/photo";
 import { canEditTrip } from "@/lib/permissions";
 import { useAuth } from "@/components/AuthProvider";
+import { readCache, writeCache } from "@/lib/offlineCache";
 import type { Game, Trip } from "@/lib/types";
+
+type TripCache = { trip: Trip; games: Game[] };
 
 export default function TripPage() {
   const params = useParams();
   const router = useRouter();
   const tripId = params.id as string;
   const { user, signInWithGoogle } = useAuth();
+  const cacheKey = `skunklife-trip-cache-v1-${tripId}`;
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   // Optimistic until the RPC resolves, so the UI doesn't flash a "can't edit"
   // state for the common case (a tied player who's signed in).
   const [canEdit, setCanEdit] = useState(true);
@@ -48,25 +53,51 @@ export default function TripPage() {
   const [editingGame, setEditingGame] = useState<Game | null>(null);
 
   async function loadAll() {
-    const { data: tripData } = await supabase
-      .from("trips")
-      .select(
-        "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
-      )
-      .eq("id", tripId)
-      .single();
-    setTrip(tripData as unknown as Trip);
+    try {
+      const [tripRes, gamesRes] = await Promise.all([
+        supabase
+          .from("trips")
+          .select(
+            "*, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+          )
+          .eq("id", tripId)
+          .single(),
+        supabase
+          .from("games")
+          .select("*")
+          .eq("trip_id", tripId)
+          .order("created_at", { ascending: true }),
+      ]);
+      if (tripRes.error) throw tripRes.error;
+      if (gamesRes.error) throw gamesRes.error;
 
-    const { data: gamesData } = await supabase
-      .from("games")
-      .select("*")
-      .eq("trip_id", tripId)
-      .order("created_at", { ascending: true });
-    setGames((gamesData as Game[]) ?? []);
-    setLoading(false);
+      const nextTrip = tripRes.data as unknown as Trip;
+      const nextGames = (gamesRes.data as Game[]) ?? [];
+      setTrip(nextTrip);
+      setGames(nextGames);
+      setOffline(false);
+      writeCache<TripCache>(cacheKey, { trip: nextTrip, games: nextGames });
+    } catch {
+      // Offline (or the request otherwise failed) — fall back to the last
+      // successfully loaded copy of this trip rather than a blank screen.
+      const cached = readCache<TripCache>(cacheKey);
+      if (cached) {
+        setTrip(cached.trip);
+        setGames(cached.games);
+        setOffline(true);
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
+    const cached = readCache<TripCache>(cacheKey);
+    if (cached) {
+      setTrip(cached.trip);
+      setGames(cached.games);
+      setLoading(false);
+    }
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
@@ -222,6 +253,16 @@ export default function TripPage() {
     if (updated.status === "completed") setReviewGameId(updated.id);
   }
 
+  // Abandons an in-progress game entirely — a mis-deal, a test, or a game cut
+  // short some other way. Never has a photo yet (photos only attach once a
+  // game is completed), so there's nothing in storage to clean up.
+  async function cancelGame(gameId: string) {
+    const { error } = await supabase.from("games").delete().eq("id", gameId);
+    if (error) throw error;
+    setGames((prev) => prev.filter((g) => g.id !== gameId));
+    if (reviewGameId === gameId) setReviewGameId(null);
+  }
+
   async function endTrip() {
     if (!confirm("End this trip and move it to the archive?")) return;
     setEnding(true);
@@ -272,11 +313,30 @@ export default function TripPage() {
         ← Trips
       </Link>
       <header className="text-center mt-2 mb-6">
-        <h1 className="font-display italic text-3xl text-track">{trip.name}</h1>
+        <h1 className="font-display italic text-3xl text-track flex items-center justify-center gap-2">
+          {trip.name}
+          {trip.is_demo && (
+            <span className="text-[10px] uppercase tracking-widest border border-brass/40 text-brass-light/80 rounded px-1.5 py-0.5 font-body not-italic">
+              Demo
+            </span>
+          )}
+        </h1>
         <p className="text-xs text-track/50 mt-2">
           Base stake {formatCents(trip.base_amount_cents)} · {trip.per_point_cents}¢/point differential
         </p>
       </header>
+
+      {trip.is_demo && (
+        <p className="text-center text-xs rounded-lg py-1.5 mb-4 border border-brass/30 bg-brass/10 text-brass-light">
+          Demo trip — scores normally, but stays out of the all-time head-to-head tally.
+        </p>
+      )}
+
+      {offline && (
+        <p className="text-center text-xs rounded-lg py-1.5 mb-4 border border-brass/30 bg-brass/10 text-brass-light">
+          Offline — showing this trip&rsquo;s last loaded data.
+        </p>
+      )}
 
       {!canEdit && (
         <div className="rounded-xl border border-brass/30 bg-walnut-light/10 p-4 text-center text-sm text-track/60 mb-4">
@@ -308,6 +368,11 @@ export default function TripPage() {
               : undefined
           }
           onDismiss={reviewGame ? () => setReviewGameId(null) : undefined}
+          onCancelGame={
+            boardGame.status === "in_progress"
+              ? () => cancelGame(boardGame.id)
+              : undefined
+          }
         />
       ) : showEditTrip ? (
         <div className="rounded-xl border border-brass/30 bg-walnut-light/10 p-5">

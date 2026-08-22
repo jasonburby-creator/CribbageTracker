@@ -58,6 +58,7 @@ export default function GameLive({
   onGameChange,
   onNextGame,
   onDismiss,
+  onCancelGame,
 }: {
   trip: Trip;
   game: Game;
@@ -68,6 +69,8 @@ export default function GameLive({
   // Shown on the game-over summary so players can move on from the final board.
   onNextGame?: () => void;
   onDismiss?: () => void;
+  // Abandons this in-progress game entirely (mis-deal, test game, etc).
+  onCancelGame?: () => void;
 }) {
   // Local-first: `game` is the on-device source of truth for the live game so
   // taps land instantly and keep working offline. Changes are persisted and
@@ -85,6 +88,8 @@ export default function GameLive({
   const [photoQueued, setPhotoQueued] = useState(false);
   const [queuedPreview, setQueuedPreview] = useState<string | null>(null);
   const [showAdjust, setShowAdjust] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelInput, setCancelInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const P1_COLOR = "#F27A21"; // Safety Orange
@@ -619,6 +624,56 @@ export default function GameLive({
           </div>
         )}
       </div>
+
+      {canEdit && onCancelGame && game.status === "in_progress" && (
+        <div>
+          {!showCancelConfirm ? (
+            <button
+              onClick={() => setShowCancelConfirm(true)}
+              className="w-full text-sm text-skunk/70 border border-skunk/20 rounded-lg py-2"
+            >
+              Cancel this game
+            </button>
+          ) : (
+            <div className="rounded-lg border border-skunk/40 bg-skunk/5 p-3 space-y-2">
+              <p className="text-sm text-skunk">
+                This deletes the game entirely — mis-deal, test, whatever the
+                reason — and can&rsquo;t be undone. Type{" "}
+                <strong>cancel</strong> below to confirm.
+              </p>
+              <input
+                value={cancelInput}
+                onChange={(e) => setCancelInput(e.target.value)}
+                placeholder="Type CANCEL"
+                autoCapitalize="none"
+                className="w-full bg-walnut-deep border border-skunk/40 rounded-lg px-3 py-2 text-track placeholder:text-track/30"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowCancelConfirm(false);
+                    setCancelInput("");
+                  }}
+                  className="flex-1 border border-brass/30 text-track/60 rounded-lg py-2 text-sm"
+                >
+                  Never mind
+                </button>
+                <button
+                  onClick={() => {
+                    onCancelGame();
+                    setShowCancelConfirm(false);
+                    setCancelInput("");
+                  }}
+                  disabled={cancelInput.trim().toLowerCase() !== "cancel"}
+                  className="flex-1 bg-skunk text-ink font-display font-semibold rounded-lg py-2 text-sm disabled:opacity-40"
+                >
+                  Confirm cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
