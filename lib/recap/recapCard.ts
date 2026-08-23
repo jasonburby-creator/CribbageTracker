@@ -41,9 +41,7 @@ export function drawRecapCard(
   ctx.textAlign = "left";
   ctx.fillStyle = PALETTE.accent;
   ctx.font = "600 24px system-ui, sans-serif";
-  ctx.letterSpacing = "4px";
-  ctx.fillText("SKUNK LIFE", padX, 70);
-  ctx.letterSpacing = "0px";
+  ctx.fillText("S K U N K   L I F E", padX, 70);
 
   ctx.fillStyle = PALETTE.text;
   ctx.font = "italic 700 56px Georgia, serif";

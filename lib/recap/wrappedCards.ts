@@ -79,9 +79,7 @@ function drawWordmark(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = PALETTE.accent;
   ctx.font = "600 32px system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.letterSpacing = "6px";
-  ctx.fillText("SKUNK LIFE", WRAPPED_W / 2, 120);
-  ctx.letterSpacing = "0px";
+  ctx.fillText("S K U N K   L I F E", WRAPPED_W / 2, 120);
 }
 
 // Renders one card onto the given context. `img`, when the card is a photo

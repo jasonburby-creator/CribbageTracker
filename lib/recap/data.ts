@@ -113,12 +113,13 @@ export function buildRecapData(trip: Trip, games: Game[]): RecapData {
 
   // Fall back to the most recent photo if no game with a photo had a
   // meaningful margin recorded yet (heroMargin stays -1 only if no photos at all).
-  if (!heroPhoto && mostRecentPhotoGame?.photo_url) {
+  const fallbackPhotoUrl = mostRecentPhotoGame?.photo_url;
+  if (!heroPhoto && mostRecentPhotoGame && fallbackPhotoUrl) {
     const g = mostRecentPhotoGame;
     const winnerName = g.winner_player === 1 ? p1Name : p2Name;
     const loserName = g.winner_player === 1 ? p2Name : p1Name;
     heroPhoto = {
-      url: g.photo_url,
+      url: fallbackPhotoUrl,
       caption: `${winnerName} beat ${loserName}`,
     };
   }
