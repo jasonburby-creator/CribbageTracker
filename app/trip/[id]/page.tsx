@@ -11,6 +11,7 @@ import LogPastGameForm from "@/components/LogPastGameForm";
 import type { PastGamePayload, PhotoChange } from "@/components/LogPastGameForm";
 import TripSummary from "@/components/TripSummary";
 import TripReview from "@/components/TripReview";
+import TripRecap from "@/components/TripRecap";
 import PhotoThumb from "@/components/PhotoThumb";
 import PullToRefresh from "@/components/PullToRefresh";
 import {
@@ -47,6 +48,7 @@ export default function TripPage() {
   const [showLogPastGame, setShowLogPastGame] = useState(false);
   const [showEditTrip, setShowEditTrip] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [showRecap, setShowRecap] = useState(false);
   // A game that just finished — keep its final board + winner on screen until
   // the players deal the next one or dismiss it, instead of snapping away.
   const [reviewGameId, setReviewGameId] = useState<string | null>(null);
@@ -432,12 +434,25 @@ export default function TripPage() {
         </button>
       )}
 
+      {completedGames.length > 0 && (
+        <button
+          onClick={() => setShowRecap(true)}
+          className="w-full mt-2 border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm"
+        >
+          🎁 Create a recap
+        </button>
+      )}
+
       {showReview && (
         <TripReview
           trip={trip}
           games={games}
           onClose={() => setShowReview(false)}
         />
+      )}
+
+      {showRecap && (
+        <TripRecap trip={trip} games={games} onClose={() => setShowRecap(false)} />
       )}
 
       {completedGames.length > 0 && (

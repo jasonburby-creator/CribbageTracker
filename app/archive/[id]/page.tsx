@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import TripSummary from "@/components/TripSummary";
 import TripReview from "@/components/TripReview";
+import TripRecap from "@/components/TripRecap";
 import PhotoThumb from "@/components/PhotoThumb";
 import PullToRefresh from "@/components/PullToRefresh";
 import { formatCents, sortGamesByPlayedDesc } from "@/lib/scoring";
@@ -23,6 +24,7 @@ export default function ArchivedTripPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [showRecap, setShowRecap] = useState(false);
   const [canEdit, setCanEdit] = useState(true);
 
   useEffect(() => {
@@ -113,12 +115,25 @@ export default function ArchivedTripPage() {
         </button>
       )}
 
+      {games.length > 0 && (
+        <button
+          onClick={() => setShowRecap(true)}
+          className="w-full mb-6 border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm"
+        >
+          🎁 Create a recap
+        </button>
+      )}
+
       {showReview && (
         <TripReview
           trip={trip}
           games={games}
           onClose={() => setShowReview(false)}
         />
+      )}
+
+      {showRecap && (
+        <TripRecap trip={trip} games={games} onClose={() => setShowRecap(false)} />
       )}
 
       <TripSummary trip={trip} games={games} />
