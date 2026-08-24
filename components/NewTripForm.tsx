@@ -27,7 +27,6 @@ export default function NewTripForm({
   const [players, setPlayers] = useState<PlayerOption[]>([]);
   const [name, setName] = useState(trip?.name ?? "");
   const [boardName, setBoardName] = useState(trip?.board_name ?? "");
-  const [boardTheme, setBoardTheme] = useState(trip?.board_theme ?? "");
   const [baseAmount, setBaseAmount] = useState(
     trip ? (trip.base_amount_cents / 100).toFixed(2) : "1.00"
   );
@@ -108,7 +107,6 @@ export default function NewTripForm({
       const values = {
         name: name.trim(),
         board_name: boardName.trim(),
-        board_theme: boardTheme.trim() || null,
         base_amount_cents: baseCents,
         per_point_cents: perPointCents,
         player1_id: player1Id,
@@ -177,22 +175,6 @@ export default function NewTripForm({
           placeholder="El Tablero"
           className="w-full bg-walnut-deep border border-brass/40 rounded-lg px-3 py-2 text-track placeholder:text-track/30 focus:outline-none focus:ring-2 focus:ring-brass"
         />
-      </div>
-      <div>
-        <label className="block text-xs uppercase tracking-widest text-brass-light/70 mb-1">
-          What shape/theme should the board be?
-        </label>
-        <textarea
-          value={boardTheme}
-          onChange={(e) => setBoardTheme(e.target.value)}
-          placeholder="Match it to where you're headed — e.g. shaped like a paella pan for Spain, or a surfboard for a coast trip"
-          rows={2}
-          className="w-full bg-walnut-deep border border-brass/40 rounded-lg px-3 py-2 text-track placeholder:text-track/30 focus:outline-none focus:ring-2 focus:ring-brass"
-        />
-        <p className="text-xs text-track/40 mt-1">
-          This is just recorded for the record — you'll build or bring the
-          physical board yourselves.
-        </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>

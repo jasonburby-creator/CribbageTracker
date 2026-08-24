@@ -52,13 +52,21 @@ export function drawRecapCard(
   ctx.fillText(data.dateRange, padX, y + 10);
   y += 60;
 
+  // Leader (more trip wins) listed first, not just trip.player1 positionally.
+  const [leader, trailer] =
+    data.player1Wins >= data.player2Wins
+      ? [
+          { name: data.player1Name, wins: data.player1Wins },
+          { name: data.player2Name, wins: data.player2Wins },
+        ]
+      : [
+          { name: data.player2Name, wins: data.player2Wins },
+          { name: data.player1Name, wins: data.player1Wins },
+        ];
+
   ctx.fillStyle = PALETTE.accent2;
   ctx.font = "600 30px system-ui, sans-serif";
-  ctx.fillText(
-    `${data.player1Name} ${data.player1Wins} – ${data.player2Wins} ${data.player2Name}`,
-    padX,
-    y + 20
-  );
+  ctx.fillText(`${leader.name} ${leader.wins} – ${trailer.wins} ${trailer.name}`, padX, y + 20);
   y += 60;
 
   ctx.fillStyle = PALETTE.text;

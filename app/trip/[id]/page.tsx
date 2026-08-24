@@ -55,6 +55,19 @@ export default function TripPage() {
   const [editingGame, setEditingGame] = useState<Game | null>(null);
 
   async function loadAll() {
+    // Check connectivity directly — see the matching comment in app/page.tsx.
+    // The service worker can transparently serve these requests from its own
+    // cache while offline, so the fetch may never actually throw.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const cached = readCache<TripCache>(cacheKey);
+      if (cached) {
+        setTrip(cached.trip);
+        setGames(cached.games);
+      }
+      setOffline(true);
+      setLoading(false);
+      return;
+    }
     try {
       const [tripRes, gamesRes] = await Promise.all([
         supabase
@@ -439,7 +452,7 @@ export default function TripPage() {
           onClick={() => setShowRecap(true)}
           className="w-full mt-2 border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm"
         >
-          🎁 Create a recap
+          📸 Create a recap
         </button>
       )}
 

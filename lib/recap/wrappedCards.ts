@@ -16,6 +16,13 @@ export type WrappedCard =
 // swipeable story view and the recorded highlight video, so they always
 // match.
 export function buildWrappedCards(data: RecapData): WrappedCard[] {
+  // Leader (more trip wins) shown first/left, not just trip.player1 positionally.
+  const leaderFirst = data.player1Wins >= data.player2Wins;
+  const leaderName = leaderFirst ? data.player1Name : data.player2Name;
+  const leaderWins = leaderFirst ? data.player1Wins : data.player2Wins;
+  const trailerName = leaderFirst ? data.player2Name : data.player1Name;
+  const trailerWins = leaderFirst ? data.player2Wins : data.player1Wins;
+
   const cards: WrappedCard[] = [
     {
       kind: "title",
@@ -26,10 +33,10 @@ export function buildWrappedCards(data: RecapData): WrappedCard[] {
     {
       kind: "tally",
       gamesPlayed: data.gamesPlayed,
-      p1: data.player1Name,
-      p1Wins: data.player1Wins,
-      p2: data.player2Name,
-      p2Wins: data.player2Wins,
+      p1: leaderName,
+      p1Wins: leaderWins,
+      p2: trailerName,
+      p2Wins: trailerWins,
       owesLine: data.owesLine,
     },
   ];

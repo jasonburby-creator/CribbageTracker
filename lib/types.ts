@@ -9,7 +9,6 @@ export type Trip = {
   id: string;
   name: string;
   board_name: string;
-  board_theme: string | null;
   base_amount_cents: number;
   per_point_cents: number;
   player1_id: string;
@@ -18,6 +17,10 @@ export type Trip = {
   created_at: string;
   ended_at: string | null;
   is_demo: boolean;
+  paid_at: string | null;
+  paid_on: string | null;
+  paid_method: string | null;
+  paid_by_player_id: string | null;
   // joined
   player1?: Player;
   player2?: Player;

@@ -8,7 +8,7 @@ import { useAuth } from "@/components/AuthProvider";
 import type { Trip } from "@/lib/types";
 
 export default function ArchivePage() {
-  const { user } = useAuth();
+  const { user, signInWithGoogle } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -116,24 +116,32 @@ export default function ArchivePage() {
         ))}
       </div>
 
-      {user ? (
-        <div className="text-center mt-10">
-          <button
-            onClick={exportAllData}
-            disabled={exporting}
-            className="text-sm border border-brass/40 text-brass-light rounded-lg px-4 py-2 disabled:opacity-50"
-          >
-            {exporting ? "Exporting…" : "⬇ Export all data"}
-          </button>
-          {exportError && (
-            <p className="text-skunk text-xs mt-2">{exportError}</p>
-          )}
-        </div>
-      ) : (
-        <p className="text-center text-xs text-track/40 mt-10">
-          Sign in to export a full backup of every trip and game.
-        </p>
-      )}
+      <div className="text-center mt-10">
+        {user ? (
+          <>
+            <button
+              onClick={exportAllData}
+              disabled={exporting}
+              className="text-sm border border-brass/40 text-brass-light rounded-lg px-4 py-2 disabled:opacity-50"
+            >
+              {exporting ? "Exporting…" : "⬇ Export all data"}
+            </button>
+            {exportError && (
+              <p className="text-skunk text-xs mt-2">{exportError}</p>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-track/50">
+            <button
+              onClick={signInWithGoogle}
+              className="underline underline-offset-4 text-brass-light"
+            >
+              Sign in with Google
+            </button>{" "}
+            to export a full backup of every trip and game.
+          </p>
+        )}
+      </div>
     </main>
     </PullToRefresh>
   );

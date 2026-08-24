@@ -9,18 +9,20 @@ import PullToRefresh from "@/components/PullToRefresh";
 import ClaimPlayer from "@/components/ClaimPlayer";
 import InstallPrompt from "@/components/InstallPrompt";
 import { useAuth } from "@/components/AuthProvider";
-import { computeHeadToHeads } from "@/lib/scoring";
+import { computeHeadToHeads, computeTripSummary, formatCents } from "@/lib/scoring";
 import type { HeadToHead } from "@/lib/scoring";
 import { readCache, writeCache } from "@/lib/offlineCache";
 import type { Player, Trip } from "@/lib/types";
 
 const HOME_CACHE_KEY = "skunklife-home-cache-v1";
-type HomeCache = { trips: Trip[]; heads: HeadToHead[] };
+type UnpaidTrip = { trip: Trip; oweCents: number };
+type HomeCache = { trips: Trip[]; heads: HeadToHead[]; unpaid: UnpaidTrip[] };
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [heads, setHeads] = useState<HeadToHead[]>([]);
+  const [unpaid, setUnpaid] = useState<UnpaidTrip[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -62,9 +64,26 @@ export default function HomePage() {
     : heads;
 
   const loadHome = useCallback(async () => {
+    // Check connectivity directly rather than only reacting to a thrown
+    // error: the service worker's own cache (public/sw.js) can transparently
+    // serve these same requests from its cache even while offline, so the
+    // fetch can "succeed" with stale data and never throw at all — that's
+    // good for keeping the app usable, but it means we can't tell the user
+    // is offline just from the request working.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const cached = readCache<HomeCache>(HOME_CACHE_KEY);
+      if (cached) {
+        setTrips(cached.trips);
+        setHeads(cached.heads);
+        setUnpaid(cached.unpaid);
+      }
+      setOffline(true);
+      setLoading(false);
+      return;
+    }
     try {
       // Active trips for the list, plus every trip + completed game for the
-      // all-time head-to-head tally.
+      // all-time head-to-head tally and the unpaid-balance reminder below.
       const [activeRes, allTripsRes, gamesRes] = await Promise.all([
         supabase
           .from("trips")
@@ -76,7 +95,7 @@ export default function HomePage() {
         supabase
           .from("trips")
           .select(
-            "id, is_demo, player1_id, player2_id, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
+            "id, name, status, is_demo, paid_at, player1_id, player2_id, player1:player1_id(id, name, created_at), player2:player2_id(id, name, created_at)"
           ),
         supabase
           .from("games")
@@ -90,15 +109,33 @@ export default function HomePage() {
       if (gamesRes.error) throw gamesRes.error;
 
       const nextTrips = (activeRes.data as unknown as Trip[]) ?? [];
+      const allTrips = (allTripsRes.data as any[]) ?? [];
+      const allGames = (gamesRes.data as any[]) ?? [];
       // Demo/practice trips still work normally on their own page, but never
       // feed into the all-time head-to-head tally.
-      const realTrips = ((allTripsRes.data as any[]) ?? []).filter((t) => !t.is_demo);
-      const nextHeads = computeHeadToHeads(realTrips, (gamesRes.data as any[]) ?? []);
+      const realTrips = allTrips.filter((t) => !t.is_demo);
+      const nextHeads = computeHeadToHeads(realTrips, allGames);
+
+      // Archived, non-demo trips with a balance that's never been marked paid.
+      const gamesByTrip = new Map<string, any[]>();
+      for (const g of allGames) {
+        const list = gamesByTrip.get(g.trip_id) ?? [];
+        list.push(g);
+        gamesByTrip.set(g.trip_id, list);
+      }
+      const nextUnpaid: UnpaidTrip[] = realTrips
+        .filter((t) => t.status === "archived" && !t.paid_at)
+        .map((t) => ({
+          trip: t as Trip,
+          oweCents: computeTripSummary(gamesByTrip.get(t.id) ?? []).player1.netCents,
+        }))
+        .filter((u) => u.oweCents !== 0);
 
       setTrips(nextTrips);
       setHeads(nextHeads);
+      setUnpaid(nextUnpaid);
       setOffline(false);
-      writeCache<HomeCache>(HOME_CACHE_KEY, { trips: nextTrips, heads: nextHeads });
+      writeCache<HomeCache>(HOME_CACHE_KEY, { trips: nextTrips, heads: nextHeads, unpaid: nextUnpaid });
     } catch {
       // Offline (or the request otherwise failed) — fall back to whatever we
       // last successfully loaded rather than leaving the page blank.
@@ -106,6 +143,7 @@ export default function HomePage() {
       if (cached) {
         setTrips(cached.trips);
         setHeads(cached.heads);
+        setUnpaid(cached.unpaid);
         setOffline(true);
       }
     } finally {
@@ -120,10 +158,18 @@ export default function HomePage() {
     if (cached) {
       setTrips(cached.trips);
       setHeads(cached.heads);
+      setUnpaid(cached.unpaid);
       setLoading(false);
     }
     loadHome();
   }, [loadHome]);
+
+  // Reminders for trips you're actually tied to.
+  const myUnpaid = myPlayer
+    ? unpaid.filter(
+        (u) => u.trip.player1_id === myPlayer.id || u.trip.player2_id === myPlayer.id
+      )
+    : [];
 
   return (
     <PullToRefresh onRefresh={loadHome}>
@@ -158,6 +204,25 @@ export default function HomePage() {
         <p className="text-center text-xs rounded-lg py-1.5 mb-4 border border-brass/30 bg-brass/10 text-brass-light">
           Offline — showing your last loaded trips.
         </p>
+      )}
+
+      {myUnpaid.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {myUnpaid.map(({ trip, oweCents }) => {
+            const owerName = oweCents < 0 ? trip.player1?.name : trip.player2?.name;
+            const owedToName = oweCents < 0 ? trip.player2?.name : trip.player1?.name;
+            return (
+              <Link
+                key={trip.id}
+                href={`/archive/${trip.id}`}
+                className="block rounded-lg border border-brass/30 bg-brass/10 px-4 py-2.5 text-sm text-brass-light"
+              >
+                {owerName} owes {owedToName} {formatCents(Math.abs(oweCents))} for{" "}
+                {trip.name} →
+              </Link>
+            );
+          })}
+        </div>
       )}
 
       <InstallPrompt />

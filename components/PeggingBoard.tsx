@@ -67,7 +67,6 @@ export default function PeggingBoard({
   player2Score: number;
   player1Prev: number;
   player2Prev: number;
-  themeText?: string; // accepted for compatibility; unused
   boardName?: string;
 }) {
   const lanes = [

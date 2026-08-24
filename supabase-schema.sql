@@ -13,7 +13,6 @@ create table if not exists trips (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   board_name text not null,
-  board_theme text,
   base_amount_cents integer not null default 100,
   per_point_cents integer not null default 10,
   player1_id uuid not null references players(id),
@@ -24,9 +23,19 @@ create table if not exists trips (
   -- A demo/practice trip still scores and works normally, but is excluded
   -- from the all-time head-to-head tally so testing never mixes into real
   -- players' stats.
-  is_demo boolean not null default false
+  is_demo boolean not null default false,
+  -- Payment: a single trusted declaration by either tied player, not a
+  -- two-sided handshake — matches how this actually gets settled in person.
+  paid_at timestamptz,       -- when it was marked (system time)
+  paid_on date,               -- the actual payment date (user-picked)
+  paid_method text,           -- "Venmo" / "Cash" / "PayPal" / "Other: ..."
+  paid_by_player_id uuid references players(id)
 );
 alter table trips add column if not exists is_demo boolean not null default false;
+alter table trips add column if not exists paid_at timestamptz;
+alter table trips add column if not exists paid_on date;
+alter table trips add column if not exists paid_method text;
+alter table trips add column if not exists paid_by_player_id uuid references players(id);
 
 create table if not exists games (
   id uuid primary key default gen_random_uuid(),

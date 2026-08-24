@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { buildRecapData } from "@/lib/recap/data";
 import { drawRecapCard, loadRecapHeroImage, RECAP_CARD_H, RECAP_CARD_W } from "@/lib/recap/recapCard";
 import {
@@ -16,10 +17,11 @@ import {
   isVideoRecordingSupported,
   recordHighlightVideo,
 } from "@/lib/recap/highlightVideo";
-import { canvasToPngBlob, downloadBlob } from "@/lib/recap/canvas";
+import { canvasToPngBlob, downloadBlob, loadImage } from "@/lib/recap/canvas";
+import { COLLAGE_H, COLLAGE_W, drawCollage, pickCollagePhotos } from "@/lib/recap/collage";
 import type { Game, Trip } from "@/lib/types";
 
-type Tab = "card" | "story" | "video";
+type Tab = "card" | "story" | "video" | "collage";
 
 export default function TripRecap({
   trip,
@@ -33,8 +35,13 @@ export default function TripRecap({
   const [tab, setTab] = useState<Tab>("card");
   const data = useMemo(() => buildRecapData(trip, games), [trip, games]);
   const cards = useMemo(() => buildWrappedCards(data), [data]);
+  const collagePhotos = useMemo(() => pickCollagePhotos(games), [games]);
 
-  return (
+  // Portaled to document.body — see the identical note in TripReview.tsx.
+  // The trip page's PullToRefresh wrapper traps `fixed` descendants inside
+  // itself, which otherwise puts this overlay's close button in a losing
+  // stacking fight against the always-present ThemeToggle.
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-walnut-deep/95 backdrop-blur-sm flex flex-col">
       <div className="flex items-center justify-between px-4 py-3">
         <p className="font-display italic text-xl text-track">Trip recap</p>
@@ -47,8 +54,8 @@ export default function TripRecap({
         </button>
       </div>
 
-      <div className="flex justify-center gap-2 pb-3">
-        {(["card", "story", "video"] as Tab[]).map((t) => (
+      <div className="flex justify-center gap-2 pb-3 flex-wrap px-2">
+        {(["card", "story", "video", "collage"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -59,7 +66,13 @@ export default function TripRecap({
                 : "border-brass/30 text-brass-light")
             }
           >
-            {t === "card" ? "Recap card" : t === "story" ? "Story" : "Video"}
+            {t === "card"
+              ? "Recap card"
+              : t === "story"
+              ? "Story"
+              : t === "video"
+              ? "Video"
+              : "Collage"}
           </button>
         ))}
       </div>
@@ -69,9 +82,13 @@ export default function TripRecap({
           {tab === "card" && <RecapCardPanel data={data} />}
           {tab === "story" && <StoryPanel cards={cards} />}
           {tab === "video" && <VideoPanel cards={cards} />}
+          {tab === "collage" && (
+            <CollagePanel photoUrls={collagePhotos} tripName={data.tripName} />
+          )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -211,6 +228,24 @@ function VideoPanel({ cards }: { cards: WrappedCard[] }) {
   const [downloadInfo, setDownloadInfo] = useState<{ blob: Blob; ext: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The canvas is otherwise blank until you hit Generate — draw a real still
+  // (the trip's photo if it has one, else the title card) so there's
+  // something to look at right away instead of an empty box.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const previewCard = cards.find((c) => c.kind === "photo") ?? cards[0];
+      if (!previewCard) return;
+      const img = await loadCardImage(previewCard);
+      if (cancelled) return;
+      const ctx = canvasRef.current?.getContext("2d");
+      if (ctx) drawWrappedCard(ctx, previewCard, img);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cards]);
+
   async function generate() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -282,6 +317,64 @@ function VideoPanel({ cards }: { cards: WrappedCard[] }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function CollagePanel({ photoUrls, tripName }: { photoUrls: string[]; tripName: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    (async () => {
+      // Load every photo in parallel; one that fails (network hiccup, a bad
+      // CORS response) just leaves its cell blank instead of blocking the
+      // rest of the collage.
+      const images = await Promise.all(
+        photoUrls.map((url) => loadImage(url).catch(() => null))
+      );
+      if (cancelled) return;
+      const ctx = canvasRef.current?.getContext("2d");
+      if (ctx) {
+        drawCollage(ctx, photoUrls, images, tripName);
+        setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [photoUrls, tripName]);
+
+  async function download() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const blob = await canvasToPngBlob(canvas);
+    downloadBlob(blob, `${slug(tripName)}-collage.png`);
+  }
+
+  if (photoUrls.length === 0) {
+    return <p className="text-center text-track/50 text-sm">No photos in this trip yet.</p>;
+  }
+
+  return (
+    <div className="text-center">
+      <div className="rounded-xl overflow-hidden border border-brass/25">
+        <canvas
+          ref={canvasRef}
+          width={COLLAGE_W}
+          height={COLLAGE_H}
+          className="w-full h-auto block"
+        />
+      </div>
+      <button
+        onClick={download}
+        disabled={!ready}
+        className="mt-4 bg-brass text-ink font-display font-semibold rounded-lg px-5 py-2.5 disabled:opacity-40"
+      >
+        ⬇ Download PNG
+      </button>
     </div>
   );
 }

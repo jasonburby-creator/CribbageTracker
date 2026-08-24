@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import TripSummary from "@/components/TripSummary";
 import TripReview from "@/components/TripReview";
 import TripRecap from "@/components/TripRecap";
+import PaymentStatus from "@/components/PaymentStatus";
 import PhotoThumb from "@/components/PhotoThumb";
 import PullToRefresh from "@/components/PullToRefresh";
 import { formatCents, sortGamesByPlayedDesc } from "@/lib/scoring";
@@ -26,6 +27,7 @@ export default function ArchivedTripPage() {
   const [showReview, setShowReview] = useState(false);
   const [showRecap, setShowRecap] = useState(false);
   const [canEdit, setCanEdit] = useState(true);
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -36,6 +38,27 @@ export default function ArchivedTripPage() {
       alive = false;
     };
   }, [tripId, user]);
+
+  // Which of the trip's two players the signed-in user actually is, so a
+  // marked payment can record who did it.
+  useEffect(() => {
+    if (!user?.email) {
+      setMyPlayerId(null);
+      return;
+    }
+    let alive = true;
+    supabase
+      .from("players")
+      .select("id")
+      .eq("email", user.email.toLowerCase())
+      .maybeSingle()
+      .then(({ data }) => {
+        if (alive) setMyPlayerId(data?.id ?? null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [user]);
 
   async function deleteTrip() {
     if (
@@ -106,6 +129,14 @@ export default function ArchivedTripPage() {
         </p>
       </header>
 
+      <PaymentStatus
+        trip={trip}
+        games={games}
+        canEdit={canEdit}
+        myPlayerId={myPlayerId}
+        onUpdate={setTrip}
+      />
+
       {games.some((g) => g.photo_url) && (
         <button
           onClick={() => setShowReview(true)}
@@ -120,7 +151,7 @@ export default function ArchivedTripPage() {
           onClick={() => setShowRecap(true)}
           className="w-full mb-6 border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm"
         >
-          🎁 Create a recap
+          📸 Create a recap
         </button>
       )}
 

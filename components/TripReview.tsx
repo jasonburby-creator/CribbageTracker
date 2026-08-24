@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { sortGamesByPlayedDesc } from "@/lib/scoring";
 import { forwardGeocode } from "@/lib/geocode";
 import type { Coords } from "@/lib/geo";
@@ -206,7 +207,13 @@ export default function TripReview({
 
   const current = photos[index];
 
-  return (
+  // Portaled to document.body: this page's PullToRefresh wrapper applies a
+  // CSS transform (even at rest), which creates a containing block for any
+  // `fixed` descendant — that traps this overlay inside the page instead of
+  // the real viewport, and its close button loses the stacking fight against
+  // the always-present ThemeToggle. Same root cause and fix as PhotoThumb's
+  // lightbox.
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-walnut-deep/95 backdrop-blur-sm flex flex-col">
       <div className="flex items-center justify-between px-4 py-3">
         <p className="font-display italic text-xl text-track">{trip.name}</p>
@@ -301,6 +308,7 @@ export default function TripReview({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
