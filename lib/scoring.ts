@@ -224,6 +224,11 @@ export function computeHeadToHeads(
     bucket.gamesPlayed += 1;
     winner.wins += 1;
     winner.winPoints += g.win_weight ?? 1;
+    // A lifetime scoreboard, not a running balance — this stays the full
+    // gross total regardless of which individual trips have been settled.
+    // "Who's ahead all-time" and "what's currently unpaid" are different
+    // questions; the latter lives in the per-trip reminder on the home page,
+    // which already excludes paid trips on its own.
     winner.netCents += payout;
     loser.netCents -= payout;
     winner.winMarginSum += winnerScore - loserScore;

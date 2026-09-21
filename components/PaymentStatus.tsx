@@ -30,6 +30,7 @@ export default function PaymentStatus({
   onUpdate: (trip: Trip) => void;
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [date, setDate] = useState(todayLocal());
   const [method, setMethod] = useState<(typeof METHODS)[number]>("Venmo");
   const [otherMethod, setOtherMethod] = useState("");
@@ -109,22 +110,32 @@ export default function PaymentStatus({
       : null;
     return (
       <div className="rounded-xl border border-brass/30 bg-walnut-light/10 p-4 mb-4">
-        <p className="text-sm text-track">
-          <span className="text-brass-light">✓ Paid</span>
-          {trip.paid_method ? ` via ${trip.paid_method}` : ""}
-          {paidDate ? ` · ${paidDate}` : ""}
-          {markedByName ? ` · marked by ${markedByName}` : ""}
-        </p>
-        {canEdit && (
-          <button
-            onClick={undoPaid}
-            disabled={busy}
-            className="text-xs text-track/50 underline underline-offset-4 mt-1 disabled:opacity-40"
-          >
-            Undo
-          </button>
+        <button
+          onClick={() => setShowDetails((v) => !v)}
+          className="flex items-center gap-1.5 text-sm"
+        >
+          <span className="text-brass-light font-semibold">✓ Paid</span>
+          <span className="text-track/40 text-xs">{showDetails ? "▲" : "▼"}</span>
+        </button>
+        {showDetails && (
+          <div className="mt-2 pt-2 border-t border-brass/20 space-y-1">
+            <p className="text-xs text-track/70">
+              {trip.paid_method ? `Via ${trip.paid_method}` : ""}
+              {paidDate ? ` · ${paidDate}` : ""}
+              {markedByName ? ` · marked by ${markedByName}` : ""}
+            </p>
+            {canEdit && (
+              <button
+                onClick={undoPaid}
+                disabled={busy}
+                className="text-xs text-track/50 underline underline-offset-4 disabled:opacity-40"
+              >
+                Undo
+              </button>
+            )}
+            {error && <p className="text-skunk text-xs">{error}</p>}
+          </div>
         )}
-        {error && <p className="text-skunk text-xs mt-1">{error}</p>}
       </div>
     );
   }
