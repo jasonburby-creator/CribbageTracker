@@ -28,7 +28,10 @@ export async function enablePushNotifications(): Promise<EnablePushResult> {
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      // TS 5.7's DOM lib types Uint8Array as generic over its buffer, which
+      // no longer structurally matches BufferSource — a type-checker quirk,
+      // not a real mismatch (a Uint8Array is always valid here at runtime).
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
     });
   }
   await subscribeToPush(subscription.toJSON() as PushSubscriptionJSON);
