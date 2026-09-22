@@ -9,6 +9,7 @@ import PullToRefresh from "@/components/PullToRefresh";
 import ClaimPlayer from "@/components/ClaimPlayer";
 import InstallPrompt from "@/components/InstallPrompt";
 import { useAuth } from "@/components/AuthProvider";
+import { fetchOnlineGameState } from "@/lib/onlineGameClient";
 import { computeHeadToHeads, computeTripSummary, formatCents } from "@/lib/scoring";
 import type { HeadToHead } from "@/lib/scoring";
 import { readCache, writeCache } from "@/lib/offlineCache";
@@ -17,6 +18,7 @@ import type { Player, Trip } from "@/lib/types";
 const HOME_CACHE_KEY = "skunklife-home-cache-v1";
 type UnpaidTrip = { trip: Trip; oweCents: number };
 type HomeCache = { trips: Trip[]; heads: HeadToHead[]; unpaid: UnpaidTrip[] };
+type MyTurnGame = { gameId: string; tripId: string; tripName: string };
 
 export default function HomePage() {
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
@@ -29,6 +31,7 @@ export default function HomePage() {
   const [myPlayer, setMyPlayer] = useState<Player | null>(null);
   const [myPlayerChecked, setMyPlayerChecked] = useState(false);
   const [showAllTrips, setShowAllTrips] = useState(false);
+  const [myTurnGames, setMyTurnGames] = useState<MyTurnGame[]>([]);
 
   // Find (if any) the player row linked to the signed-in user's email.
   useEffect(() => {
@@ -49,6 +52,64 @@ export default function HomePage() {
         setMyPlayerChecked(true);
       });
   }, [user, authLoading]);
+
+  // Any in-progress online game across any trip (active or archived) where
+  // it's the signed-in player's move — the closest thing this app has to a
+  // "you have a notification" indicator for the moment the app is actually
+  // open. Small dataset (a family, a handful of concurrent online games at
+  // most), so a per-game state fetch each is simpler than a dedicated
+  // aggregate endpoint.
+  useEffect(() => {
+    let alive = true;
+    if (!myPlayer) {
+      setMyTurnGames([]);
+      return;
+    }
+    (async () => {
+      const { data: onlineGames } = await supabase
+        .from("games")
+        .select("id, trip_id")
+        .eq("mode", "online")
+        .eq("status", "in_progress");
+      const games = (onlineGames as { id: string; trip_id: string }[] | null) ?? [];
+      if (games.length === 0) {
+        if (alive) setMyTurnGames([]);
+        return;
+      }
+      const tripIds = [...new Set(games.map((g) => g.trip_id))];
+      const { data: tripsData } = await supabase
+        .from("trips")
+        .select("id, name, player1_id, player2_id")
+        .in("id", tripIds);
+      const tripsById = new Map(
+        (
+          (tripsData as { id: string; name: string; player1_id: string; player2_id: string }[]) ??
+          []
+        ).map((t) => [t.id, t])
+      );
+      const myGames = games.filter((g) => {
+        const t = tripsById.get(g.trip_id);
+        return !!t && (t.player1_id === myPlayer.id || t.player2_id === myPlayer.id);
+      });
+
+      const results: MyTurnGame[] = [];
+      for (const g of myGames) {
+        try {
+          const { view } = await fetchOnlineGameState(g.id);
+          if (view.isMyTurn) {
+            const t = tripsById.get(g.trip_id)!;
+            results.push({ gameId: g.id, tripId: g.trip_id, tripName: t.name });
+          }
+        } catch {
+          // A game that fails to load just doesn't get a reminder.
+        }
+      }
+      if (alive) setMyTurnGames(results);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [myPlayer]);
 
   const visibleTrips =
     myPlayer && !showAllTrips
@@ -204,6 +265,20 @@ export default function HomePage() {
         <p className="text-center text-xs rounded-lg py-1.5 mb-4 border border-brass/30 bg-brass/10 text-brass-light">
           Offline — showing your last loaded trips.
         </p>
+      )}
+
+      {myTurnGames.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {myTurnGames.map((g) => (
+            <Link
+              key={g.gameId}
+              href={`/trip/${g.tripId}/online/${g.gameId}`}
+              className="block rounded-lg border border-brass/30 bg-brass/10 px-4 py-2.5 text-sm text-brass-light"
+            >
+              🃏 Your move — {g.tripName} →
+            </Link>
+          ))}
+        </div>
       )}
 
       {myUnpaid.length > 0 && (

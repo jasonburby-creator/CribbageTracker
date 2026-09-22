@@ -22,6 +22,7 @@ import {
 } from "@/lib/scoring";
 import { uploadGamePhoto } from "@/lib/photo";
 import { canEditTrip } from "@/lib/permissions";
+import { startOnlineGame } from "@/lib/onlineGameClient";
 import { useAuth } from "@/components/AuthProvider";
 import { readCache, writeCache } from "@/lib/offlineCache";
 import type { Game, Trip } from "@/lib/types";
@@ -53,6 +54,8 @@ export default function TripPage() {
   // the players deal the next one or dismiss it, instead of snapping away.
   const [reviewGameId, setReviewGameId] = useState<string | null>(null);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
+  const [startingOnline, setStartingOnline] = useState(false);
+  const [onlineStartError, setOnlineStartError] = useState<string | null>(null);
 
   async function loadAll() {
     // Check connectivity directly — see the matching comment in app/page.tsx.
@@ -151,6 +154,20 @@ export default function TripPage() {
     if (data) setGames((g) => [...g, data as Game]);
     setReviewGameId(null);
     setShowNewGameForm(false);
+  }
+
+  async function handleStartOnline() {
+    setStartingOnline(true);
+    setOnlineStartError(null);
+    try {
+      const { view } = await startOnlineGame(tripId);
+      router.push(`/trip/${tripId}/online/${view.game.id}`);
+    } catch (err) {
+      setOnlineStartError(
+        err instanceof Error ? err.message : "Couldn't start an online game."
+      );
+      setStartingOnline(false);
+    }
   }
 
   function closePastGameForm() {
@@ -368,7 +385,15 @@ export default function TripPage() {
         </div>
       )}
 
-      {boardGame ? (
+      {boardGame && boardGame.mode === "online" ? (
+        <Link
+          href={`/trip/${tripId}/online/${boardGame.id}`}
+          className="block rounded-xl border border-brass/30 bg-walnut-light/10 p-5 text-center hover:border-brass/60 transition-colors"
+        >
+          <p className="font-display text-xl text-track">🃏 Online game in progress</p>
+          <p className="text-sm text-brass-light/70 mt-1">Tap to continue →</p>
+        </Link>
+      ) : boardGame ? (
         <GameLive
           trip={trip}
           game={boardGame}
@@ -422,6 +447,16 @@ export default function TripPage() {
           >
             Deal a new game
           </button>
+          <button
+            onClick={handleStartOnline}
+            disabled={startingOnline}
+            className="w-full border border-brass/40 text-brass-light rounded-lg py-2.5 text-sm disabled:opacity-40"
+          >
+            {startingOnline ? "Starting…" : "🃏 Play online (no cards needed)"}
+          </button>
+          {onlineStartError && (
+            <p className="text-xs text-skunk text-center">{onlineStartError}</p>
+          )}
           <button
             onClick={() => {
               setEditingGame(null);
@@ -492,6 +527,7 @@ export default function TripPage() {
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1">
                       <span>
+                        {g.mode === "online" ? "🃏 " : ""}
                         {g.winner_player === 1 ? trip.player1?.name : trip.player2?.name} won{" "}
                         {Math.max(g.player1_score, g.player2_score)}–
                         {Math.min(g.player1_score, g.player2_score)}
@@ -519,7 +555,7 @@ export default function TripPage() {
                       )}
                       <div className="text-right">
                         <span className="font-score block">{formatCents(g.payout_cents ?? 0)}</span>
-                        {canEdit && (
+                        {canEdit && g.mode !== "online" && (
                           <button
                             onClick={() => {
                               setShowLogPastGame(false);

@@ -143,6 +143,61 @@ end;
 $$;
 grant execute on function public.is_tied_to_game_photo(text) to anon, authenticated;
 
+-- Online play (no physical deck): the server deals, hides hands, and referees
+-- pegging/counting via app/api/online/* routes using the service-role key.
+-- An online game still ends up as a normal `games` row (same score/payout/
+-- skunk columns a manually-tapped game gets) — `mode` is just how it got there.
+alter table games add column if not exists mode text not null default 'manual' check (mode in ('manual', 'online'));
+
+create table if not exists online_deals (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid not null references games(id) on delete cascade,
+  hand_number integer not null default 1,
+  dealer_player_id uuid not null references players(id),
+  turn_player_id uuid references players(id),
+  status text not null default 'discarding' check (status in ('discarding', 'pegging', 'counting', 'completed')),
+  starter_card text,
+  crib jsonb not null default '[]'::jsonb,
+  pegging_pile jsonb not null default '[]'::jsonb,
+  pegging_count integer not null default 0,
+  -- Full play-by-play for the deal's pegging phase (never resets — unlike
+  -- pegging_pile, which clears after 31/a mutual go); powers the on-screen log.
+  pegging_log jsonb not null default '[]'::jsonb,
+  pone_hand_points integer,
+  dealer_hand_points integer,
+  crib_points integer,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+create index if not exists idx_online_deals_game_id on online_deals(game_id);
+
+create table if not exists online_hands (
+  id uuid primary key default gen_random_uuid(),
+  deal_id uuid not null references online_deals(id) on delete cascade,
+  player_id uuid not null references players(id),
+  cards jsonb not null,
+  discarded boolean not null default false,
+  unique (deal_id, player_id)
+);
+
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  player_id uuid not null references players(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_push_subscriptions_player_id on push_subscriptions(player_id);
+
+-- No policies granted to anon/authenticated on any of the three tables above —
+-- deliberately. Hidden hands and a real-money referee can't be safely exposed
+-- to a client-held anon/user key, so these are only ever touched by the
+-- Next.js API routes running with the Supabase service-role key.
+alter table online_deals enable row level security;
+alter table online_hands enable row level security;
+alter table push_subscriptions enable row level security;
+
 -- Enable realtime updates for live multi-device score tracking.
 -- Guarded because Supabase sometimes auto-enrolls new tables in this
 -- publication, which makes a plain "alter publication ... add table" error
